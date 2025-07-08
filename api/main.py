@@ -32,7 +32,7 @@ async def startup():
     """Initialize WriterService on startup"""
     global writer_service
     print("🚀 Initializing WriterService...")
-    writer_service = WriterService()
+    writer_service = WriterService(storage_dir="output/writer_storage")
     print(f"✅ Ready with {len(writer_service.chunks)} chunks")
 
 
@@ -75,7 +75,7 @@ async def reload_service():
         old_count = len(writer_service.chunks) if writer_service else 0
         
         # Create fresh WriterService instance
-        writer_service = WriterService()
+        writer_service = WriterService(storage_dir="output/writer_storage")
         new_count = len(writer_service.chunks)
         
         return {

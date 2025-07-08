@@ -1,8 +1,9 @@
 progress:
-  file: "data/task_progress.txt"
+  file: "output/task_progress.txt"
 
 output:
   base_dir: "output"
+  toc_short_filename: "toc_short.txt"
 
 cache:
   embeddings_filename: "embeddings_cache.json"

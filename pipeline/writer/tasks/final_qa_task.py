@@ -40,7 +40,7 @@ class FinalQATask(BaseWriterTask):
         
         try:
             # Initialize WriterService and LLM
-            writer_service = WriterService()
+            writer_service = WriterService(storage_dir="output/writer_storage")
             llm_client = LLMClient(model=self.task_config['model'])
             
             # Get ALL completed chunks
@@ -74,7 +74,7 @@ class FinalQATask(BaseWriterTask):
             self._create_semantic_analysis_report(writer_service, all_chunks)
             
             # Create completion flag
-            with self.output().open('w') as f:
+            with open(self.output().path, 'w', encoding='utf-8') as f:
                 f.write(f"Final QA completed for {len(all_chunks)} chunks. Found {len(all_issues)} issues.")
             
             # Persist task completion
@@ -436,7 +436,7 @@ class FinalQATask(BaseWriterTask):
         progress_file = self.config.get_progress_file()
         Path(progress_file).parent.mkdir(parents=True, exist_ok=True)
         
-        with open(progress_file, 'a') as f:
+        with open(progress_file, 'a', encoding='utf-8') as f:
             from datetime import datetime
             timestamp = datetime.now().isoformat()
             f.write(f"{timestamp} | {hierarchical_id} | {task_name} | {status}\n")

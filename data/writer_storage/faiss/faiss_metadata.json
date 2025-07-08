@@ -1,7 +1,0 @@
-{
-  "version": "1.0",
-  "embedding_dim": 1536,
-  "next_faiss_id": 0,
-  "total_vectors": 0,
-  "index_type": "IndexFlatIP"
-}

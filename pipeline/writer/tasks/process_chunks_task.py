@@ -40,7 +40,7 @@ class ProcessChunksTask(BaseWriterTask):
         
         try:
             # Initialize WriterService
-            writer_service = WriterService()
+            writer_service = WriterService(storage_dir="output/writer_storage")
             
             # Initialize LLM client
             llm_client = LLMClient(model=self.task_config['model'])
@@ -50,7 +50,7 @@ class ProcessChunksTask(BaseWriterTask):
             
             if not chunks_to_process:
                 print(f"✅ No more chunks to process in iteration {self.iteration}")
-                with self.output().open('w') as f:
+                with open(self.output().path, 'w', encoding='utf-8') as f:
                     f.write("No chunks to process")
                 self._persist_task_progress("GLOBAL", f"ProcessChunksTask_Iteration_{self.iteration}", "COMPLETED")
                 return
@@ -103,7 +103,7 @@ class ProcessChunksTask(BaseWriterTask):
                     print(f"❌ Failed to process chunk {chunk.hierarchical_id}: {str(e)}")
             
             # Create completion flag
-            with self.output().open('w') as f:
+            with open(self.output().path, 'w', encoding='utf-8') as f:
                 f.write(f"Processed {processed_count}/{len(chunks_to_process)} chunks in iteration {self.iteration}")
             
             # Persist task completion
@@ -201,7 +201,7 @@ class ProcessChunksTask(BaseWriterTask):
         progress_file = self.config.get_progress_file()
         Path(progress_file).parent.mkdir(parents=True, exist_ok=True)
         
-        with open(progress_file, 'a') as f:
+        with open(progress_file, 'a', encoding='utf-8') as f:
             from datetime import datetime
             timestamp = datetime.now().isoformat()
             f.write(f"{timestamp} | {hierarchical_id} | {task_name} | {status}\n")

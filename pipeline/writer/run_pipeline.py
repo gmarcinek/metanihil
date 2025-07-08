@@ -75,8 +75,8 @@ def _print_completion_summary(toc_path: str):
     print("📁 Output locations:")
     print(f"   Main output: output/{toc_name}/")
     print(f"   TOC summary: output/{toc_name}/toc_short.txt")
-    print(f"   Progress log: data/task_progress.txt")
-    print(f"   Database: data/writer.db")
+    print(f"   Progress log: output/task_progress.txt")
+    print(f"   Database: output/writer.db")
     
     # Check if final QA was run
     final_qa_path = Path(f"output/{toc_name}/final_qa/final_qa_completed.flag")
@@ -90,7 +90,7 @@ def _print_resume_instructions(toc_path: str, batch_size: int, max_iterations: i
     print("\n🔄 To resume pipeline from where it left off:")
     print(f"   python -m pipeline.writer.run_pipeline {toc_path} --batch-size {batch_size} --max-iterations {max_iterations}")
     print("\n📊 To check current progress:")
-    print("   tail -f data/task_progress.txt")
+    print("   tail -f output/task_progress.txt")
     print("\n📂 To check outputs so far:")
     toc_name = Path(toc_path).stem
     print(f"   ls -la output/{toc_name}/")

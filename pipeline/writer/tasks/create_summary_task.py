@@ -40,14 +40,14 @@ class CreateSummaryTask(BaseWriterTask):
         
         try:
             # Initialize WriterService
-            writer_service = WriterService()
+            writer_service = WriterService(storage_dir="output/writer_storage")
             
             # Get all chunks (should be NOT_STARTED TOC entries)
             chunks = writer_service.get_chunks_by_status(ChunkStatus.NOT_STARTED)
             
             if not chunks:
                 print("⚠️ No chunks found for summary")
-                with self.output().open('w') as f:
+                with open(self.output().path, 'w', encoding='utf-8') as f:
                     f.write("No chunks found")
                 self._persist_task_progress("GLOBAL", "CreateSummaryTask", "COMPLETED")
                 return
@@ -81,7 +81,7 @@ class CreateSummaryTask(BaseWriterTask):
                 f.write(f"\nGenerated Summary:\n{summary}\n")
             
             # Create completion flag
-            with self.output().open('w') as f:
+            with open(self.output().path, 'w', encoding='utf-8') as f:
                 f.write(f"Summary created for {len(chunks)} TOC entries")
             
             # Persist task completion
@@ -119,7 +119,7 @@ class CreateSummaryTask(BaseWriterTask):
         progress_file = self.config.get_progress_file()
         Path(progress_file).parent.mkdir(parents=True, exist_ok=True)
         
-        with open(progress_file, 'a') as f:
+        with open(progress_file, 'a', encoding='utf-8') as f:
             from datetime import datetime
             timestamp = datetime.now().isoformat()
             f.write(f"{timestamp} | {hierarchical_id} | {task_name} | {status}\n")

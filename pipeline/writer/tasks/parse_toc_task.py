@@ -33,7 +33,7 @@ class ParseTOCTask(BaseWriterTask):
         
         try:
             # Initialize WriterService
-            writer_service = WriterService()
+            writer_service = WriterService(storage_dir="output/writer_storage")
             
             # Read TOC file
             with open(self.toc_path, 'r', encoding='utf-8') as f:
@@ -46,7 +46,7 @@ class ParseTOCTask(BaseWriterTask):
             errors = self._validate_hierarchy(chunks)
             if errors:
                 error_file = f"{self.output_dir}/errors.txt"
-                with open(error_file, 'w') as f:
+                with open(error_file, 'w', encoding='utf-8') as f:
                     f.write('\n'.join(errors))
                 self._persist_task_progress("GLOBAL", "ParseTOCTask", "FAILED")
                 raise ValueError(f"TOC hierarchy errors saved to {error_file}")
@@ -56,13 +56,13 @@ class ParseTOCTask(BaseWriterTask):
             
             # Save summary
             summary_file = f"{self.output_dir}/summary.txt"
-            with open(summary_file, 'w') as f:
+            with open(summary_file, 'w', encoding='utf-8') as f:
                 f.write(f"Parsed {saved_count} chunks from {self.toc_path}\n")
                 for chunk in chunks:
                     f.write(f"{chunk.hierarchical_id}: {chunk.title}\n")
             
             # Create completion flag
-            with self.output().open('w') as f:
+            with open(self.output().path, 'w', encoding='utf-8') as f:
                 f.write(f"Completed parsing {saved_count} chunks")
             
             # Persist task completion
@@ -90,7 +90,7 @@ class ParseTOCTask(BaseWriterTask):
         progress_file = self.config.get_progress_file()
         Path(progress_file).parent.mkdir(parents=True, exist_ok=True)
         
-        with open(progress_file, 'a') as f:
+        with open(progress_file, 'a', encoding='utf-8') as f:
             from datetime import datetime
             timestamp = datetime.now().isoformat()
             f.write(f"{timestamp} | {hierarchical_id} | {task_name} | {status}\n")

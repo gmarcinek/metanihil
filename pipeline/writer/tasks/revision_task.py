@@ -44,7 +44,7 @@ class RevisionTask(BaseWriterTask):
         
         try:
             # Initialize WriterService and LLM
-            writer_service = WriterService()
+            writer_service = WriterService(storage_dir="output/writer_storage")
             llm_client = LLMClient(model=self.task_config['model'])
             
             # Find chunks that need revision from this iteration
@@ -52,7 +52,7 @@ class RevisionTask(BaseWriterTask):
             
             if not chunks_to_revise:
                 print(f"✅ No chunks need revision in iteration {self.iteration}")
-                with self.output().open('w') as f:
+                with open(self.output().path, 'w', encoding='utf-8') as f:
                     f.write("No chunks required revision")
                 self._persist_task_progress("GLOBAL", f"RevisionTask_Iteration_{self.iteration}", "COMPLETED")
                 return
@@ -120,7 +120,7 @@ class RevisionTask(BaseWriterTask):
             self._create_revision_summary(chunks_to_revise, revised_count)
             
             # Create completion flag
-            with self.output().open('w') as f:
+            with open(self.output().path, 'w', encoding='utf-8') as f:
                 f.write(f"Revision iteration {self.iteration} completed: {revised_count}/{len(chunks_to_revise)} chunks revised")
             
             # Persist task completion
@@ -141,7 +141,7 @@ class RevisionTask(BaseWriterTask):
             return chunks_to_revise
         
         # Look for NEEDS_REWRITE or NEEDS_REVIEW from QualityCheckTask in current iteration
-        with open(progress_file, 'r') as f:
+        with open(progress_file, 'r', encoding='utf-8') as f:
             for line in f:
                 if ('QualityCheckTask' in line and 
                     ('NEEDS_REWRITE' in line or 'NEEDS_REVIEW' in line or 'NEEDS_EXPAND' in line)):
@@ -335,7 +335,7 @@ class RevisionTask(BaseWriterTask):
         progress_file = self.config.get_progress_file()
         Path(progress_file).parent.mkdir(parents=True, exist_ok=True)
         
-        with open(progress_file, 'a') as f:
+        with open(progress_file, 'a', encoding='utf-8') as f:
             from datetime import datetime
             timestamp = datetime.now().isoformat()
             f.write(f"{timestamp} | {hierarchical_id} | {task_name} | {status}\n")

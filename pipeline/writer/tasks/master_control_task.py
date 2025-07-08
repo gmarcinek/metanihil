@@ -36,7 +36,7 @@ class MasterControlTask(BaseWriterTask):
         
         try:
             # Initialize WriterService
-            writer_service = WriterService()
+            writer_service = WriterService(storage_dir="output/writer_storage")
             
             # First, ensure TOC is parsed
             self._ensure_toc_parsed()
@@ -77,7 +77,7 @@ class MasterControlTask(BaseWriterTask):
                 print(f"⚠️ Reached maximum iterations ({self.max_iterations})")
             
             # Create completion flag
-            with self.output().open('w') as f:
+            with open(self.output().path, 'w', encoding='utf-8') as f:
                 f.write(f"Master control completed after {self.iteration} iterations")
             
             # Persist task completion
@@ -117,8 +117,8 @@ class MasterControlTask(BaseWriterTask):
             return "needs_processing"
         
         # Check if we have any chunks at all
-        completed_chunks = writer_service.get_chunks_by_status(ChunkStatus.COMPLETED)
-        if not completed_chunks:
+        all_chunks = list(writer_service.chunks.values())
+        if not all_chunks:
             return "no_chunks"
         
         # All chunks are completed
@@ -184,7 +184,7 @@ class MasterControlTask(BaseWriterTask):
         if not Path(progress_file).exists():
             return chunks_to_revise
         
-        with open(progress_file, 'r') as f:
+        with open(progress_file, 'r', encoding='utf-8') as f:
             for line in f:
                 if 'QualityCheckTask' in line and ('NEEDS_REWRITE' in line or 'NEEDS_REVIEW' in line):
                     parts = line.strip().split(' | ')
@@ -211,7 +211,7 @@ class MasterControlTask(BaseWriterTask):
         
         # Save progress to file
         progress_log = f"{self.output_dir}/progress_log.txt"
-        with open(progress_log, 'a') as f:
+        with open(progress_log, 'a', encoding='utf-8') as f:
             from datetime import datetime
             timestamp = datetime.now().isoformat()
             f.write(f"{timestamp} | Iteration {self.iteration} | Completed: {completed}/{total} ({completion_rate:.1f}%)\n")
@@ -221,7 +221,7 @@ class MasterControlTask(BaseWriterTask):
         progress_file = self.config.get_progress_file()
         Path(progress_file).parent.mkdir(parents=True, exist_ok=True)
         
-        with open(progress_file, 'a') as f:
+        with open(progress_file, 'a', encoding='utf-8') as f:
             from datetime import datetime
             timestamp = datetime.now().isoformat()
             f.write(f"{timestamp} | {hierarchical_id} | {task_name} | {status}\n")

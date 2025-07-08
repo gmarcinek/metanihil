@@ -18,6 +18,7 @@ venv/
 /output/
 /_output/
 /.cache
+/.llm
 
 # 🛠 IDE (VSCode, PyCharm)
 .vscode/

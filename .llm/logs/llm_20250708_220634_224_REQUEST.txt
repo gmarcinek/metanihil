@@ -1,3 +1,22 @@
+=== LLM REQUEST ===
+Timestamp: 2025-07-08T22:06:34.224328
+Model: gpt-4o
+Temperature: 0.0
+Max Tokens: 16384
+System Message: None
+
+PROMPT:
+Jesteś ekspertem od analizy i streszczania tekstów różnych gatunków.
+
+Przeanalizuj poniższy spis treści i napisz zwięzłe streszczenie całego dzieła.
+
+Określ gatunek i styl na podstawie struktury i tytułów, a następnie napisz streszczenie:
+- Opisujące główne tematy i strukturę
+- Wyjaśniające logiczny przepływ
+- Odpowiadające gatunkowi dzieła
+- Składające się z 3-5 akapitów
+
+Spis treści:
 0 Rozdział 0
 0.0 Wstęp
 0.1 Moment pęknięcia
@@ -221,3 +240,6 @@
 5.9.1 Czy jakakolwiek forma poznawcza może zaprojektować metrykę, która nie będzie jej własnym produktem?
 5.9.2 Czy możliwe jest rozróżnianie „lepszego" i „gorszego" bez uciekania się do ramy, która już to rozróżnienie ustala?
 5.9.3 Czy pytanie o metrykę to ostatni akt świadomości — czy pierwsze złudzenie nowej formy?
+
+Streszczenie:
+

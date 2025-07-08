@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class FAISSManager:
     """FAISS index manager for chunk embeddings - adapted from book-app pattern"""
     
-    def __init__(self, storage_dir: str = "data/writer_storage", embedding_dim: int = 1536):
+    def __init__(self, storage_dir: str = "output/writer_storage", embedding_dim: int = 1536):
         self.storage_dir = Path(storage_dir)
         self.faiss_dir = self.storage_dir / "faiss"
         self.embedding_dim = embedding_dim
@@ -64,7 +64,7 @@ class FAISSManager:
             self.index = faiss.read_index(str(self.index_file))
             
             # Load ID mappings
-            with open(self.id_mapping_file, 'r') as f:
+            with open(self.id_mapping_file, 'r', encoding='utf-8') as f:
                 mapping_data = json.load(f)
                 self.id_to_faiss_id = mapping_data.get('id_to_faiss_id', {})
                 self.faiss_id_to_id = mapping_data.get('faiss_id_to_id', {})
@@ -72,7 +72,7 @@ class FAISSManager:
                 self.faiss_id_to_id = {int(k): v for k, v in self.faiss_id_to_id.items()}
             
             # Load metadata
-            with open(self.metadata_file, 'r') as f:
+            with open(self.metadata_file, 'r', encoding='utf-8') as f:
                 metadata = json.load(f)
                 self.next_faiss_id = metadata.get('next_faiss_id', 0)
             
@@ -265,7 +265,7 @@ class FAISSManager:
                 'id_to_faiss_id': self.id_to_faiss_id,
                 'faiss_id_to_id': {str(k): v for k, v in self.faiss_id_to_id.items()}
             }
-            with open(self.id_mapping_file, 'w') as f:
+            with open(self.id_mapping_file, 'w', encoding='utf-8') as f:
                 json.dump(mapping_data, f, indent=2)
             
             # Save metadata
@@ -276,7 +276,7 @@ class FAISSManager:
                 'total_vectors': self.index.ntotal,
                 'index_type': 'IndexFlatIP'
             }
-            with open(self.metadata_file, 'w') as f:
+            with open(self.metadata_file, 'w', encoding='utf-8') as f:
                 json.dump(metadata, f, indent=2)
             
         except Exception as e:

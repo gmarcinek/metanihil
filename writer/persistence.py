@@ -10,7 +10,7 @@ from .models import ChunkData, ChunkStatus
 class ChunkPersistence:
     """JSON-based persistence for chunks - adapted from book-app pattern"""
     
-    def __init__(self, storage_dir: str = "data/writer_storage"):
+    def __init__(self, storage_dir: str = "output/writer_storage"):
         self.storage_dir = Path(storage_dir)
         self.chunks_dir = self.storage_dir / "chunks"
         self.metadata_file = self.storage_dir / "metadata.json"

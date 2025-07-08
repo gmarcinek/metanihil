@@ -15,7 +15,7 @@ from .embedder import ChunkEmbedder
 class WriterService:
     """Main service orchestrating chunks, embeddings, and search - unified API"""
     
-    def __init__(self, storage_dir: str = "data/writer_storage", 
+    def __init__(self, storage_dir: str = "output/writer_storage", 
                  embedding_model: str = "text-embedding-3-small"):
         self.storage_dir = Path(storage_dir)
         self.embedding_model = embedding_model

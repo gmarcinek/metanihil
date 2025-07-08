@@ -45,7 +45,7 @@ class EmbedTOCTask(BaseWriterTask):
             
             if not chunks_to_embed:
                 print("✅ No chunks to embed")
-                with self.output().open('w') as f:
+                with open(self.output().path, 'w', encoding='utf-8') as f:
                     f.write("No chunks to embed")
                 self._persist_task_progress("GLOBAL", "EmbedTOCTask", "COMPLETED")
                 return
@@ -88,13 +88,13 @@ class EmbedTOCTask(BaseWriterTask):
             
             # Save summary
             summary_file = f"{self.output_dir}/embedding_summary.txt"
-            with open(summary_file, 'w') as f:
+            with open(summary_file, 'w', encoding='utf-8') as f:
                 f.write(f"Embedded {embedded_count}/{len(chunks_to_embed)} TOC chunks\n")
                 f.write(f"Embedding model: {embedding_model}\n")
                 f.write(f"FAISS vectors: {writer_service.faiss_manager.get_index_stats().get('total_vectors', 0)}\n")
             
             # Create completion flag
-            with self.output().open('w') as f:
+            with open(self.output().path, 'w', encoding='utf-8') as f:
                 f.write(f"Completed embedding {embedded_count} TOC chunks")
             
             # Persist task completion
@@ -111,7 +111,7 @@ class EmbedTOCTask(BaseWriterTask):
         progress_file = self.config.get_progress_file()
         Path(progress_file).parent.mkdir(parents=True, exist_ok=True)
         
-        with open(progress_file, 'a') as f:
+        with open(progress_file, 'a', encoding='utf-8') as f:
             from datetime import datetime
             timestamp = datetime.now().isoformat()
             f.write(f"{timestamp} | {hierarchical_id} | {task_name} | {status}\n")

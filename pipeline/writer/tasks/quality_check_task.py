@@ -44,7 +44,7 @@ class QualityCheckTask(BaseWriterTask):
         
         try:
             # Initialize WriterService and LLM
-            writer_service = WriterService()
+            writer_service = WriterService(storage_dir="output/writer_storage")
             llm_client = LLMClient(model=self.task_config['model'])
             
             # Get recently completed chunks (from this iteration)
@@ -52,7 +52,7 @@ class QualityCheckTask(BaseWriterTask):
             
             if not recently_completed_chunks:
                 print(f"✅ No recently completed chunks to check in iteration {self.iteration}")
-                with self.output().open('w') as f:
+                with open(self.output().path, 'w', encoding='utf-8') as f:
                     f.write("No chunks to check")
                 self._persist_task_progress("GLOBAL", f"QualityCheckTask_Iteration_{self.iteration}", "COMPLETED")
                 return
@@ -91,7 +91,7 @@ class QualityCheckTask(BaseWriterTask):
             self._create_iteration_quality_report(recently_completed_chunks, total_issues, batch_count)
             
             # Create completion flag
-            with self.output().open('w') as f:
+            with open(self.output().path, 'w', encoding='utf-8') as f:
                 f.write(f"Quality check iteration {self.iteration} completed: {total_issues} issues found in {batch_count} batches")
             
             # Persist task completion
@@ -110,7 +110,7 @@ class QualityCheckTask(BaseWriterTask):
         recently_completed_ids = set()
         
         if Path(progress_file).exists():
-            with open(progress_file, 'r') as f:
+            with open(progress_file, 'r', encoding='utf-8') as f:
                 for line in f:
                     if f"ProcessChunksTask_Iteration_{self.iteration}" in line and "COMPLETED" in line:
                         parts = line.strip().split(' | ')
@@ -325,7 +325,7 @@ TREŚĆ: {chunk.content or 'Brak treści'}
         progress_file = self.config.get_progress_file()
         Path(progress_file).parent.mkdir(parents=True, exist_ok=True)
         
-        with open(progress_file, 'a') as f:
+        with open(progress_file, 'a', encoding='utf-8') as f:
             from datetime import datetime
             timestamp = datetime.now().isoformat()
             f.write(f"{timestamp} | {hierarchical_id} | {task_name} | {status}\n")

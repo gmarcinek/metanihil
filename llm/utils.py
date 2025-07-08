@@ -38,7 +38,7 @@ def detect_image_format(image_base64: str) -> str:
 def log_llm_request(prompt: str, config: LLMConfig, model: str):
     """Log LLM request to file"""
     try:
-        logs_dir = Path("semantic_store/logs")
+        logs_dir = Path(".llm/logs")
         logs_dir.mkdir(parents=True, exist_ok=True)
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
@@ -64,7 +64,7 @@ PROMPT:
 def log_llm_response(prompt: str, response: str, config: LLMConfig, model: str):
     """Log LLM response to file"""
     try:
-        logs_dir = Path("semantic_store/logs")
+        logs_dir = Path(".llm/logs")
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
         filename = f"llm_{timestamp}_RESPONSE.txt"
         
