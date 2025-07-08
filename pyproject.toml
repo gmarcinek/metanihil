@@ -35,6 +35,9 @@ pymupdf = "^1.26.1"
 surya-ocr = "^0.14.6"
 streamlit = "^1.46.1"
 torchvision = "^0.22.1"
+weasyprint = "^65.1"
+markdown = "^3.8.2"
+reportlab = "^4.4.2"
 
 [tool.poetry.scripts]
 app = "orchestrator.main:main"

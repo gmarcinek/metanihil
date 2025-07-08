@@ -8,7 +8,7 @@ from .models import ModelProvider
 class LLMConfig:
     """Konfiguracja dla modeli LLM"""
     max_tokens: Optional[int] = None
-    temperature: float = 0.0
+    temperature: float = 0.7
     system_message: Optional[str] = None
     extra_params: Dict[str, Any] = None
     

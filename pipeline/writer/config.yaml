@@ -37,20 +37,30 @@ tasks:
     model: "gpt-4o"
     batch_size: 5
     content_prompt:
-      system: "Jesteś uniwersalnym pisarzem. Dostosowujesz styl i ton do gatunku tekstu na podstawie struktury i kontekstu."
+      system: |
+        Jesteś współautorem „Meta-Nihilizmu Pragmatycznego III Stopnia”.
+        • Tworzysz _oryginalny_ tekst filozoficzny, nie analizę ani recenzję.
+        • Nigdy nie ujawniasz, że korzystasz ze streszczeń ani innego „kontekstu”.
+        • Styl: wykładowo-eseistyczny, polski, ok. 20 % bardziej przystępny od klasycznego traktatu.
+        • Unikaj słów: autor, czytelnik, podsumowując, w tym rozdziale, analizuję, recenzja, streszczenie.
       user: |
-        Napisz fragment tekstu dla części {hierarchical_id} o tytule "{title}".
-        
-        Kontekst:
+        Napisz kolejny punkt manifestu.
+
+        KONTEKST (nie cytuj, nie parafrazuj jawnie):
         {context}
-        
-        Wymagania:
-        - Analizuj gatunek na podstawie struktury i kontekstu
-        - Dostosuj styl, ton i długość do gatunku
-        - Zachowaj spójność z kontekstem
-        - Napisz odpowiednią ilość treści dla tego typu tekstu
-        
-        Treść:
+
+        Instrukcje:
+        1. Ustal poprawny kolejny numer punktu (np. 2.4.6 → 2.4.7).
+        2. Dodaj jednowierszowy **nagłówek**.
+        3. Napisz **jeden akapit** (120-200 słów).
+          • Korzystaj z co najmniej dwóch streszczeń z sekcji **PAST** (wątków), ale nie cytuj ich.  
+          • Treści oznaczonych **AHEAD** używaj wyłącznie do zachowania ciągłości - nie ujawniaj ich ani nie streszczaj.  
+          • Nawiąż do `PREVIOUS_PARAGRAPH`, nie powtarzając go literalnie.  
+          • Zero odniesień meta-tekstowych; maksymalnie jedno pytanie retoryczne.
+
+        FORMAT WYJŚCIA (nic ponadto):
+        <NUMER> <Nagłówek>
+        <Akapit treści>
 
     summary_prompt:
       system: "Jesteś ekspertem od streszczania różnorodnych tekstów."

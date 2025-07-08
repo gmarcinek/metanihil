@@ -36,21 +36,34 @@ class EmbedTOCTask(BaseWriterTask):
         self._persist_task_progress("GLOBAL", "EmbedTOCTask", "STARTED")
         
         try:
-            # Initialize WriterService with embedding model from config
+            # ✅ POPRAWKA: Spójne inicjalizowanie WriterService z storage_dir
             embedding_model = self.task_config.get('model', 'text-embedding-3-small')
-            writer_service = WriterService(embedding_model=embedding_model)
+            writer_service = WriterService(
+                storage_dir="output/writer_storage", 
+                embedding_model=embedding_model
+            )
+            
+            print(f"📚 WriterService loaded {len(writer_service.chunks)} chunks")
             
             # Get all NOT_STARTED chunks (TOC entries)
             chunks_to_embed = writer_service.get_chunks_by_status(ChunkStatus.NOT_STARTED)
             
             if not chunks_to_embed:
-                print("✅ No chunks to embed")
+                print("✅ No chunks to embed (all already embedded or no chunks found)")
+                print(f"🔍 DEBUG: Total chunks in service: {len(writer_service.chunks)}")
+                print(f"🔍 DEBUG: Chunks by status:")
+                for status in ChunkStatus:
+                    count = len(writer_service.get_chunks_by_status(status))
+                    print(f"   {status.value}: {count}")
+                
                 with open(self.output().path, 'w', encoding='utf-8') as f:
-                    f.write("No chunks to embed")
+                    f.write(f"No chunks to embed - found {len(writer_service.chunks)} total chunks")
                 self._persist_task_progress("GLOBAL", "EmbedTOCTask", "COMPLETED")
                 return
             
-            # Process each chunk
+            print(f"🧠 Found {len(chunks_to_embed)} chunks to embed")
+            
+            # Process each chunk for embedding
             embedded_count = 0
             for chunk in chunks_to_embed:
                 self._persist_task_progress(chunk.hierarchical_id, "EmbedTOCTask", "IN_PROGRESS")
@@ -86,16 +99,18 @@ class EmbedTOCTask(BaseWriterTask):
             # Save FAISS index after all embeddings
             writer_service.faiss_manager.save_index()
             
-            # Save summary
+            # Save summary with debug info
             summary_file = f"{self.output_dir}/embedding_summary.txt"
             with open(summary_file, 'w', encoding='utf-8') as f:
                 f.write(f"Embedded {embedded_count}/{len(chunks_to_embed)} TOC chunks\n")
                 f.write(f"Embedding model: {embedding_model}\n")
                 f.write(f"FAISS vectors: {writer_service.faiss_manager.get_index_stats().get('total_vectors', 0)}\n")
+                f.write(f"Total chunks in service: {len(writer_service.chunks)}\n")
+                f.write(f"Storage directory: output/writer_storage\n")
             
             # Create completion flag
             with open(self.output().path, 'w', encoding='utf-8') as f:
-                f.write(f"Completed embedding {embedded_count} TOC chunks")
+                f.write(f"Completed embedding {embedded_count}/{len(chunks_to_embed)} TOC chunks")
             
             # Persist task completion
             self._persist_task_progress("GLOBAL", "EmbedTOCTask", "COMPLETED")

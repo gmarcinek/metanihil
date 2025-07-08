@@ -12,18 +12,9 @@ from .utils import log_llm_request, log_llm_response
 class LLMClient:
     """Minimalistyczny adapter zarządzający różnymi providerami LLM z vision support"""
     
-    def __init__(self, model: str, max_tokens: Optional[int] = None, temperature: float = 0.0, 
+    def __init__(self, model: str, max_tokens: Optional[int] = None, temperature: float = 0.7, 
                  system_message: Optional[str] = None, fresh_client_every_request: bool = True):
-        """
-        Inicjalizuj klienta LLM
-        
-        Args:
-            model: Nazwa modelu (np. Models.CLAUDE_4_SONNET, Models.QWEN_CODER_32B)
-            max_tokens: Maksymalna liczba tokenów (None = użyj maksimum dla modelu)
-            temperature: Temperatura modelu (0.0-1.0)
-            system_message: Opcjonalny system message
-            fresh_client_every_request: Create fresh client each request (prevents context bleeding)
-        """
+
         if model not in MODEL_PROVIDERS:
             raise ValueError(f"Nieobsługiwany model: {model}. Dostępne: {list(MODEL_PROVIDERS.keys())}")
         

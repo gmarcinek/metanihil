@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException
 # Add parent directory for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
+from api.routers import document
 from writer.writer_service import WriterService
 
 # Global WriterService instance
@@ -51,6 +52,7 @@ app.include_router(status.router)
 app.include_router(processing.router)
 app.include_router(chunks.router)
 app.include_router(search.router)
+app.include_router(document.router)
 
 
 @app.get("/")

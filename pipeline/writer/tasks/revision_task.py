@@ -47,15 +47,17 @@ class RevisionTask(BaseWriterTask):
             writer_service = WriterService(storage_dir="output/writer_storage")
             llm_client = LLMClient(model=self.task_config['model'])
             
-            # Find chunks that need revision from this iteration
-            chunks_to_revise = self._find_chunks_needing_revision_from_iteration()
+            # Find chunks that need revision from THIS SPECIFIC iteration
+            chunks_to_revise = self._find_chunks_needing_revision_from_current_iteration()
             
             if not chunks_to_revise:
                 print(f"✅ No chunks need revision in iteration {self.iteration}")
                 with open(self.output().path, 'w', encoding='utf-8') as f:
-                    f.write("No chunks required revision")
+                    f.write(f"No chunks required revision in iteration {self.iteration}")
                 self._persist_task_progress("GLOBAL", f"RevisionTask_Iteration_{self.iteration}", "COMPLETED")
                 return
+            
+            print(f"🔧 Found {len(chunks_to_revise)} chunks needing revision from iteration {self.iteration}: {chunks_to_revise}")
             
             # Load TOC summary
             toc_summary = self._load_toc_summary()
@@ -132,27 +134,34 @@ class RevisionTask(BaseWriterTask):
             self._persist_task_progress("GLOBAL", f"RevisionTask_Iteration_{self.iteration}", "FAILED")
             raise
     
-    def _find_chunks_needing_revision_from_iteration(self) -> List[str]:
-        """Find chunks that need revision from current iteration quality check"""
+    def _find_chunks_needing_revision_from_current_iteration(self) -> List[str]:
+        """Find chunks that need revision from CURRENT iteration ONLY"""
         chunks_to_revise = []
         progress_file = self.config.get_progress_file()
         
         if not Path(progress_file).exists():
+            print(f"📝 No progress file found at {progress_file}")
             return chunks_to_revise
         
-        # Look for NEEDS_REWRITE or NEEDS_REVIEW from QualityCheckTask in current iteration
+        # Look for NEEDS_REWRITE or NEEDS_REVIEW from QualityCheckTask in CURRENT iteration ONLY
+        target_quality_check = f"QualityCheckTask_Iteration_{self.iteration}"
+        
+        print(f"🔍 Looking for revision needs from: {target_quality_check}")
+        
         with open(progress_file, 'r', encoding='utf-8') as f:
             for line in f:
-                if ('QualityCheckTask' in line and 
+                # Must match EXACTLY this iteration's quality check
+                if (target_quality_check in line and 
                     ('NEEDS_REWRITE' in line or 'NEEDS_REVIEW' in line or 'NEEDS_EXPAND' in line)):
                     
-                    # Check if this is from a recent quality check (could be from any iteration)
                     parts = line.strip().split(' | ')
                     if len(parts) >= 2:
                         hierarchical_id = parts[1]
                         if hierarchical_id not in chunks_to_revise and hierarchical_id != "GLOBAL":
                             chunks_to_revise.append(hierarchical_id)
+                            print(f"🔧 Found chunk needing revision: {hierarchical_id}")
         
+        print(f"📝 Total chunks to revise from iteration {self.iteration}: {len(chunks_to_revise)}")
         return chunks_to_revise
     
     def _get_revision_context(self, writer_service: WriterService, target_chunk: ChunkData, toc_summary: str) -> dict:

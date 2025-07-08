@@ -11,7 +11,7 @@ from pipeline.writer.config_loader import ConfigLoader
 class MasterControlTask(BaseWriterTask):
     toc_path = luigi.Parameter()
     batch_size = luigi.IntParameter(default=5)
-    max_iterations = luigi.IntParameter(default=100)
+    max_iterations = luigi.IntParameter(default=550)
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -35,11 +35,14 @@ class MasterControlTask(BaseWriterTask):
         self._persist_task_progress("GLOBAL", "MasterControlTask", "STARTED")
         
         try:
-            # Initialize WriterService
+            # Initialize WriterService with consistent storage_dir
             writer_service = WriterService(storage_dir="output/writer_storage")
             
             # First, ensure TOC is parsed
             self._ensure_toc_parsed()
+            
+            # Reload WriterService after TOC setup to see fresh data
+            writer_service = WriterService(storage_dir="output/writer_storage")
             
             # Main processing loop
             while self.iteration < self.max_iterations:
@@ -59,10 +62,14 @@ class MasterControlTask(BaseWriterTask):
                 elif status == "needs_processing":
                     print(f"📝 Processing next batch of {self.batch_size} chunks...")
                     self._run_processing_batch()
+                    # Reload WriterService to see updates
+                    writer_service = WriterService(storage_dir="output/writer_storage")
                     
                 elif status == "needs_revision":
                     print("🔧 Running revision for problematic chunks...")
                     self._run_revision_batch()
+                    # Reload WriterService to see updates
+                    writer_service = WriterService(storage_dir="output/writer_storage")
                     
                 elif status == "no_chunks":
                     print("❌ No chunks found in database!")
@@ -106,22 +113,47 @@ class MasterControlTask(BaseWriterTask):
     
     def _assess_current_status(self, writer_service: WriterService) -> str:
         """Assess what needs to be done next"""
+        print(f"🔍 DEBUG: Assessing status...")
+        print(f"🔍 DEBUG: Total chunks in WriterService: {len(writer_service.chunks)}")
+        
+        # Debug: Print all chunk statuses
+        status_debug = {}
+        for chunk in writer_service.chunks.values():
+            status_str = chunk.status.value
+            status_debug[status_str] = status_debug.get(status_str, 0) + 1
+        
+        print(f"🔍 DEBUG: Chunk status distribution:")
+        for status_str, count in status_debug.items():
+            print(f"   {status_str}: {count}")
+        
         # Check for chunks needing revision
         chunks_needing_revision = self._get_chunks_needing_revision()
+        print(f"🔍 DEBUG: Chunks needing revision: {len(chunks_needing_revision)}")
         if chunks_needing_revision:
+            print(f"🔍 DEBUG: Revision list: {chunks_needing_revision[:5]}...")  # Show first 5
             return "needs_revision"
         
-        # Check for unprocessed chunks
+        # Check for unprocessed chunks - using enum comparison
         not_started_chunks = writer_service.get_chunks_by_status(ChunkStatus.NOT_STARTED)
+        print(f"🔍 DEBUG: NOT_STARTED chunks found: {len(not_started_chunks)}")
         if not_started_chunks:
+            print(f"🔍 DEBUG: First few NOT_STARTED chunks:")
+            for chunk in not_started_chunks[:3]:
+                print(f"   {chunk.hierarchical_id}: {chunk.title} (status: {chunk.status.value})")
             return "needs_processing"
         
         # Check if we have any chunks at all
         all_chunks = list(writer_service.chunks.values())
+        print(f"🔍 DEBUG: Total chunks found: {len(all_chunks)}")
         if not all_chunks:
             return "no_chunks"
         
+        # Check completed chunks
+        completed_chunks = writer_service.get_chunks_by_status(ChunkStatus.COMPLETED)
+        print(f"🔍 DEBUG: COMPLETED chunks: {len(completed_chunks)}")
+        
         # All chunks are completed
+        print(f"🔍 DEBUG: All chunks completed - ready for final QA")
         return "all_completed"
     
     def _run_processing_batch(self):
