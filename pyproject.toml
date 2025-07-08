@@ -4,6 +4,7 @@ version = "0.1.0"
 description = ""
 authors = ["gmarcinek <grzegorz.marcinek@gmail.com>"]
 packages = [
+    { include = "api" },
     { include = "llm" },
     { include = "ocr" },
     { include = "pipeline" },

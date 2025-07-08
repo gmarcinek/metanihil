@@ -1,0 +1,186 @@
+database:
+  path: "data/writer.db"
+
+progress:
+  file: "data/task_progress.txt"
+
+output:
+  base_dir: "output"
+
+cache:
+  embeddings_filename: "embeddings_cache.json"
+
+tasks:
+  ParseTOCTask:
+    # No LLM needed
+  
+  EmbedTOCTask:
+    model: "text-embedding-3-small"
+  
+  CreateSummaryTask:
+    model: "gpt-4o"
+    prompt:
+      system: "Jesteś ekspertem od analizy i streszczania tekstów różnych gatunków."
+      user: |
+        Przeanalizuj poniższy spis treści i napisz zwięzłe streszczenie całego dzieła.
+        
+        Określ gatunek i styl na podstawie struktury i tytułów, a następnie napisz streszczenie:
+        - Opisujące główne tematy i strukturę
+        - Wyjaśniające logiczny przepływ
+        - Odpowiadające gatunkowi dzieła
+        - Składające się z 3-5 akapitów
+
+        Spis treści:
+        {toc_content}
+
+        Streszczenie:
+
+  ProcessChunksTask:
+    model: "gpt-4o"
+    batch_size: 5
+    content_prompt:
+      system: "Jesteś uniwersalnym pisarzem. Dostosowujesz styl i ton do gatunku tekstu na podstawie struktury i kontekstu."
+      user: |
+        Napisz fragment tekstu dla części {hierarchical_id} o tytule "{title}".
+        
+        Kontekst:
+        {context}
+        
+        Wymagania:
+        - Analizuj gatunek na podstawie struktury i kontekstu
+        - Dostosuj styl, ton i długość do gatunku
+        - Zachowaj spójność z kontekstem
+        - Napisz odpowiednią ilość treści dla tego typu tekstu
+        
+        Treść:
+
+    summary_prompt:
+      system: "Jesteś ekspertem od streszczania różnorodnych tekstów."
+      user: |
+        Napisz zwięzłe streszczenie poniższego fragmentu:
+        
+        ID: {hierarchical_id}
+        TYTUŁ: {title}
+        
+        TREŚĆ:
+        {content}
+        
+        Streszczenie (2-3 zdania):
+
+  QualityCheckTask:
+    model: "gpt-4o-mini"
+    batch_size: 5
+    prompt:
+      system: "Jesteś ekspertem redaktorem tekstów różnych gatunków. Oceniasz spójność i jakość niezależnie od stylu."
+      user: |
+        Przeanalizuj poniższe fragmenty tekstu pod kątem jakości i spójności.
+        
+        SCENARIUSZ (streszczenie całości):
+        {toc_summary}
+        
+        FRAGMENTY DO ANALIZY:
+        {batch_content}
+        
+        Sprawdź:
+        1. Spójność z głównym scenariuszem
+        2. Logiczny przepływ między fragmentami
+        3. Jakość treści odpowiednią dla gatunku
+        4. Czy fragment odpowiada swojemu tytułowi
+        
+        Dla każdego problematycznego fragmentu napisz:
+        - ID fragmentu (np. 1.2.3)
+        - Opis problemu
+        - Czy wymaga "przepisania" czy tylko "poprawki"
+        
+        Jeśli nie ma problemów, napisz "Brak problemów do zgłoszenia."
+        
+        Analiza:
+
+  RevisionTask:
+    model: "gpt-4o"
+    prompt:
+      system: "Jesteś ekspertem pisarzem przepisującym teksty różnych gatunków. Zachowujesz gatunek i styl oryginalnego tekstu."
+      user: |
+        Przepisz fragment tekstu dla części {hierarchical_id} o tytule "{title}".
+        Fragment był oznaczony jako wymagający poprawki.
+        
+        KONTEKST:
+        {context}
+        
+        ORYGINALNY FRAGMENT (do poprawienia):
+        {original_content}
+        
+        Wymagania:
+        - Zachowaj gatunek i styl oryginalnego tekstu
+        - Zachowaj główną treść i intencję
+        - Popraw spójność z kontekstem
+        - Zwiększ jakość w ramach danego gatunku
+        - Dostosuj długość do typu tekstu
+        
+        Poprawiony fragment:
+
+    summary_prompt:
+      system: "Jesteś ekspertem od streszczania różnorodnych tekstów."
+      user: |
+        Napisz zwięzłe streszczenie poprawionego fragmentu:
+        
+        ID: {hierarchical_id}
+        TYTUŁ: {title}
+        
+        POPRAWIONA TREŚĆ:
+        {content}
+        
+        Streszczenie (2-4 zdania):
+
+  FinalQATask:
+    model: "gpt-4.1-mini"
+    prompt:
+      system: "Jesteś ekspertem redaktorem i analitykiem tekstów. Przeprowadzasz ostateczną kontrolę jakości całego dokumentu pod kątem spójności globalnej."
+      user: |
+        Przeprowadź ostateczną analizę jakości całego dokumentu.
+        
+        STRESZCZENIE DZIEŁA:
+        {toc_summary}
+        
+        STATYSTYKI:
+        - Liczba fragmentów: {chunk_count}
+        
+        PEŁNY DOKUMENT:
+        {full_document}
+        
+        Przeanalizuj dokument pod kątem:
+        
+        1. SPÓJNOŚĆ GLOBALNA:
+        - Czy całość tworzy logiczną narrację?
+        - Czy wszystkie części współgrają ze sobą?
+        - Czy nie ma sprzeczności między fragmentami?
+        
+        2. PRZEPŁYW I STRUKTURA:
+        - Czy przejścia między sekcjami są płynne?
+        - Czy struktura wspiera główną narrację?
+        - Czy brakuje kluczowych połączeń?
+        
+        3. JAKOŚĆ TREŚCI:
+        - Czy poziom jakości jest jednolity?
+        - Czy są fragmenty znacząco słabsze od innych?
+        - Czy gatunek jest konsekwentnie zachowany?
+        
+        4. KOMPLETNOŚĆ:
+        - Czy dokument realizuje obietnice ze spisu treści?
+        - Czy brakuje kluczowych elementów?
+        - Czy są fragmenty zbędne?
+        
+        Dla każdego znalezionego problemu podaj:
+        - Numer fragmentu (np. 1.2.3)
+        - Typ problemu (niespójność/brak/zbędność/przepływ)
+        - Opis problemu
+        - Sugerowaną akcję (przepisanie/dodanie/usunięcie/modyfikacja)
+        - Priorytet (wysoki/średni/niski)
+        
+        Jeśli nie ma problemów, napisz "Dokument jest spójny i kompletny."
+        
+        ANALIZA:
+
+  MasterControlTask:
+    default_batch_size: 5
+    default_max_iterations: 100
