@@ -1,6 +1,3 @@
-database:
-  path: "data/writer.db"
-
 progress:
   file: "data/task_progress.txt"
 

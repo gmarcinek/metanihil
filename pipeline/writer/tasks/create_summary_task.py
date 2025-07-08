@@ -2,8 +2,8 @@ import luigi
 from pathlib import Path
 
 from components.structured_task import StructuredTask
-from pipeline.writer.database import DatabaseManager
-from pipeline.writer.models import ChunkStatus
+from writer.writer_service import WriterService
+from writer.models import ChunkStatus
 from pipeline.writer.config_loader import ConfigLoader
 from llm import LLMClient
 
@@ -35,9 +35,18 @@ class CreateSummaryTask(StructuredTask):
         self._persist_task_progress("GLOBAL", "CreateSummaryTask", "STARTED")
         
         try:
-            # Get all chunks from database
-            db = DatabaseManager(self.config.get_database_path())
-            chunks = db.get_chunks_by_status(ChunkStatus.NOT_STARTED)
+            # Initialize WriterService
+            writer_service = WriterService()
+            
+            # Get all chunks (should be NOT_STARTED TOC entries)
+            chunks = writer_service.get_chunks_by_status(ChunkStatus.NOT_STARTED)
+            
+            if not chunks:
+                print("⚠️ No chunks found for summary")
+                with self.output().open('w') as f:
+                    f.write("No chunks found")
+                self._persist_task_progress("GLOBAL", "CreateSummaryTask", "COMPLETED")
+                return
             
             # Prepare full TOC content for summarization
             toc_content = self._prepare_toc_content(chunks)
@@ -49,7 +58,8 @@ class CreateSummaryTask(StructuredTask):
             prompt = self._create_summary_prompt(toc_content)
             
             # Generate summary
-            summary = llm_client.complete(prompt)
+            print(f"🧠 Generating summary for {len(chunks)} TOC entries...")
+            summary = llm_client.chat(prompt)
             
             # Save summary to toc_short.txt
             with open(self.toc_short_path, 'w', encoding='utf-8') as f:
@@ -59,8 +69,12 @@ class CreateSummaryTask(StructuredTask):
             log_file = f"{self.output_dir}/summary_log.txt"
             with open(log_file, 'w', encoding='utf-8') as f:
                 f.write(f"Summary generated for {len(chunks)} chunks\n")
+                f.write(f"Model used: {self.task_config['model']}\n")
                 f.write(f"Output saved to: {self.toc_short_path}\n")
                 f.write(f"Summary length: {len(summary)} characters\n")
+                f.write(f"TOC content length: {len(toc_content)} characters\n")
+                f.write(f"\nTOC Content:\n{toc_content}\n")
+                f.write(f"\nGenerated Summary:\n{summary}\n")
             
             # Create completion flag
             with self.output().open('w') as f:
@@ -78,16 +92,23 @@ class CreateSummaryTask(StructuredTask):
     def _prepare_toc_content(self, chunks) -> str:
         """Prepare TOC content for summarization"""
         lines = []
-        for chunk in sorted(chunks, key=lambda x: x.hierarchical_id):
+        # Sort by hierarchical_id to maintain order
+        sorted_chunks = sorted(chunks, key=lambda x: x.hierarchical_id)
+        
+        for chunk in sorted_chunks:
             lines.append(f"{chunk.hierarchical_id} {chunk.title}")
+        
         return "\n".join(lines)
     
     def _create_summary_prompt(self, toc_content: str) -> str:
         """Create prompt for TOC summarization from config"""
         prompt_config = self.task_config['prompt']
+        
+        # Build full prompt with system + user messages
+        system_message = prompt_config['system']
         user_prompt = prompt_config['user'].format(toc_content=toc_content)
         
-        return f"{prompt_config['system']}\n\n{user_prompt}"
+        return f"{system_message}\n\n{user_prompt}"
     
     def _persist_task_progress(self, hierarchical_id: str, task_name: str, status: str):
         """Persist task progress to file"""

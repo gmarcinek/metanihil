@@ -1,12 +1,10 @@
 import luigi
 from pathlib import Path
-import json
 
 from components.structured_task import StructuredTask
-from pipeline.writer.database import DatabaseManager
-from pipeline.writer.models import ChunkStatus
+from writer.writer_service import WriterService
+from writer.models import ChunkStatus
 from pipeline.writer.config_loader import ConfigLoader
-from llm import LLMClient
 
 
 class EmbedTOCTask(StructuredTask):
@@ -18,7 +16,6 @@ class EmbedTOCTask(StructuredTask):
         self.config = ConfigLoader()
         self.task_config = self.config.get_task_config('EmbedTOCTask')
         self.output_dir = f"{self.config.get_output_config()['base_dir']}/{self.toc_name}/embed_toc"
-        self.embeddings_cache = f"{self.output_dir}/{self.config.get_cache_config()['embeddings_filename']}"
     
     def requires(self):
         from .parse_toc_task import ParseTOCTask
@@ -35,74 +32,75 @@ class EmbedTOCTask(StructuredTask):
         self._persist_task_progress("GLOBAL", "EmbedTOCTask", "STARTED")
         
         try:
-            # Get all chunks from database
-            db = DatabaseManager(self.config.get_database_path())
-            chunks = db.get_chunks_by_status(ChunkStatus.NOT_STARTED)
+            # Initialize WriterService with embedding model from config
+            embedding_model = self.task_config.get('model', 'text-embedding-3-small')
+            writer_service = WriterService(embedding_model=embedding_model)
             
-            # Initialize LLM client for embeddings with configured model
-            llm_client = LLMClient(model=self.task_config['model'])
+            # Get all NOT_STARTED chunks (TOC entries)
+            chunks_to_embed = writer_service.get_chunks_by_status(ChunkStatus.NOT_STARTED)
             
-            # Load existing cache
-            embeddings_cache = self._load_embeddings_cache()
+            if not chunks_to_embed:
+                print("✅ No chunks to embed")
+                with self.output().open('w') as f:
+                    f.write("No chunks to embed")
+                self._persist_task_progress("GLOBAL", "EmbedTOCTask", "COMPLETED")
+                return
             
             # Process each chunk
-            for chunk in chunks:
+            embedded_count = 0
+            for chunk in chunks_to_embed:
                 self._persist_task_progress(chunk.hierarchical_id, "EmbedTOCTask", "IN_PROGRESS")
                 
-                # Create embedding text (hierarchical_id + title)
-                embedding_text = f"{chunk.hierarchical_id} {chunk.title}"
+                try:
+                    # Generate embedding for TOC entry (title only, no content yet)
+                    embedding = writer_service.embedder.embed_chunk(chunk, use_content=False)
+                    
+                    if embedding is not None:
+                        # Update chunk with embedding
+                        chunk.embedding = embedding
+                        chunk.update_timestamp()
+                        
+                        # Add to FAISS and save
+                        writer_service.faiss_manager.add_chunk_embedding(chunk, embedding)
+                        writer_service.persistence.save_chunk(chunk)
+                        
+                        # Update in-memory cache
+                        writer_service.chunks[chunk.id] = chunk
+                        
+                        embedded_count += 1
+                        
+                        self._persist_task_progress(chunk.hierarchical_id, "EmbedTOCTask", "COMPLETED")
+                        print(f"✅ Embedded {chunk.hierarchical_id}: {chunk.title}")
+                    else:
+                        self._persist_task_progress(chunk.hierarchical_id, "EmbedTOCTask", "FAILED")
+                        print(f"❌ Failed to embed {chunk.hierarchical_id}")
                 
-                # Check cache first
-                if embedding_text in embeddings_cache:
-                    print(f"📋 Using cached embedding for {chunk.hierarchical_id}")
-                    self._persist_task_progress(chunk.hierarchical_id, "EmbedTOCTask", "COMPLETED")
-                    continue
-                
-                # Generate embedding
-                embedding = llm_client.get_embedding(embedding_text)
-                
-                # Cache the embedding
-                embeddings_cache[embedding_text] = {
-                    "hierarchical_id": chunk.hierarchical_id,
-                    "embedding": embedding,
-                    "chunk_id": chunk.id
-                }
-                
-                # Save cache after each embedding
-                self._save_embeddings_cache(embeddings_cache)
-                
-                self._persist_task_progress(chunk.hierarchical_id, "EmbedTOCTask", "COMPLETED")
-                print(f"✅ Embedded {chunk.hierarchical_id}: {chunk.title}")
+                except Exception as e:
+                    self._persist_task_progress(chunk.hierarchical_id, "EmbedTOCTask", "FAILED")
+                    print(f"❌ Error embedding {chunk.hierarchical_id}: {e}")
+            
+            # Save FAISS index after all embeddings
+            writer_service.faiss_manager.save_index()
+            
+            # Save summary
+            summary_file = f"{self.output_dir}/embedding_summary.txt"
+            with open(summary_file, 'w') as f:
+                f.write(f"Embedded {embedded_count}/{len(chunks_to_embed)} TOC chunks\n")
+                f.write(f"Embedding model: {embedding_model}\n")
+                f.write(f"FAISS vectors: {writer_service.faiss_manager.get_index_stats().get('total_vectors', 0)}\n")
             
             # Create completion flag
             with self.output().open('w') as f:
-                f.write(f"Completed embedding {len(chunks)} TOC lines")
+                f.write(f"Completed embedding {embedded_count} TOC chunks")
             
             # Persist task completion
             self._persist_task_progress("GLOBAL", "EmbedTOCTask", "COMPLETED")
             
-            print(f"✅ Embedded {len(chunks)} TOC lines and cached")
+            print(f"✅ Embedded {embedded_count} TOC chunks and saved to FAISS")
             
         except Exception as e:
             self._persist_task_progress("GLOBAL", "EmbedTOCTask", "FAILED")
             raise
-    
-    def _load_embeddings_cache(self) -> dict:
-        """Load embeddings cache from file"""
-        if Path(self.embeddings_cache).exists():
-            with open(self.embeddings_cache, 'r') as f:
-                cache = json.load(f)
-            print(f"📖 Loaded embeddings cache with {len(cache)} entries from {self.embeddings_cache}")
-            return cache
-        else:
-            print(f"📝 No existing cache found, starting fresh at {self.embeddings_cache}")
-            return {}
-    
-    def _save_embeddings_cache(self, cache: dict):
-        """Save embeddings cache to file"""
-        with open(self.embeddings_cache, 'w') as f:
-            json.dump(cache, f, indent=2)
-        print(f"💾 Saved embeddings cache with {len(cache)} entries to {self.embeddings_cache}")
     
     def _persist_task_progress(self, hierarchical_id: str, task_name: str, status: str):
         """Persist task progress to file"""

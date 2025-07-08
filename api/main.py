@@ -1,42 +1,89 @@
 """
-FastAPI main application with routers
+FastAPI main application with WriterService integration
 """
 
 import sys
 from pathlib import Path
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException
 
 # Add parent directory for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-from .deps import initialize_store
-from .routers import status, entities, relationships, search, processing, graph, analyze
+from writer.writer_service import WriterService
 
-app = FastAPI(title="NER Knowledge API", version="1.0.0")
+# Global WriterService instance
+writer_service: WriterService = None
 
-# CORS for frontend
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
-# Include routers
-app.include_router(status.router)
-app.include_router(entities.router)
-app.include_router(relationships.router)
-app.include_router(search.router)
-app.include_router(processing.router)
-app.include_router(graph.router)
-app.include_router(analyze.router)
+def get_writer_service() -> WriterService:
+    """Get current WriterService instance"""
+    global writer_service
+    if writer_service is None:
+        raise HTTPException(status_code=500, detail="WriterService not initialized")
+    return writer_service
+
+
+# Create FastAPI app
+app = FastAPI(title="Writer API", version="1.0.0")
 
 
 @app.on_event("startup")
 async def startup():
-    """Initialize store and watcher on startup"""
-    storage_dir = Path(__file__).parent.parent / "semantic_store"
-    initialize_store(storage_dir)
-    print("🚀 NER Knowledge API started")
+    """Initialize WriterService on startup"""
+    global writer_service
+    print("🚀 Initializing WriterService...")
+    writer_service = WriterService()
+    print(f"✅ Ready with {len(writer_service.chunks)} chunks")
+
+
+@app.on_event("shutdown") 
+async def shutdown():
+    """Close WriterService on shutdown"""
+    global writer_service
+    if writer_service:
+        writer_service.close()
+    print("👋 WriterService closed")
+
+
+# Include routers
+from .routers import status, processing, chunks, search
+app.include_router(status.router)
+app.include_router(processing.router)
+app.include_router(chunks.router)
+app.include_router(search.router)
+
+
+@app.get("/")
+async def root():
+    """API info"""
+    service = get_writer_service()
+    stats = service.get_statistics()
+    
+    return {
+        "message": "Writer API",
+        "chunks": stats["total_chunks"],
+        "status": "ready"
+    }
+
+
+@app.post("/reload")
+async def reload_service():
+    """Reload WriterService data - manual refresh"""
+    global writer_service
+    
+    try:
+        old_count = len(writer_service.chunks) if writer_service else 0
+        
+        # Create fresh WriterService instance
+        writer_service = WriterService()
+        new_count = len(writer_service.chunks)
+        
+        return {
+            "status": "success",
+            "message": "WriterService reloaded",
+            "chunks_before": old_count,
+            "chunks_after": new_count,
+            "new_chunks": new_count - old_count
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Reload failed: {str(e)}")

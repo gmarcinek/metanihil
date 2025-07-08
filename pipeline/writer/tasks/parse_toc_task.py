@@ -2,8 +2,7 @@ import luigi
 from pathlib import Path
 
 from components.structured_task import StructuredTask
-from pipeline.writer.parser import TOCParser
-from pipeline.writer.database import DatabaseManager
+from writer.writer_service import WriterService
 from pipeline.writer.config_loader import ConfigLoader
 
 
@@ -28,16 +27,18 @@ class ParseTOCTask(StructuredTask):
         self._persist_task_progress("GLOBAL", "ParseTOCTask", "STARTED")
         
         try:
+            # Initialize WriterService
+            writer_service = WriterService()
+            
             # Read TOC file
             with open(self.toc_path, 'r', encoding='utf-8') as f:
                 toc_content = f.read()
             
-            # Parse TOC
-            parser = TOCParser()
-            chunks = parser.parse_toc_content(toc_content)
+            # Parse TOC using WriterService
+            chunks = writer_service.parse_toc_content(toc_content)
             
-            # Validate hierarchy
-            errors = parser.validate_hierarchy(chunks)
+            # Validate hierarchy (simple check)
+            errors = self._validate_hierarchy(chunks)
             if errors:
                 error_file = f"{self.output_dir}/errors.txt"
                 with open(error_file, 'w') as f:
@@ -45,29 +46,39 @@ class ParseTOCTask(StructuredTask):
                 self._persist_task_progress("GLOBAL", "ParseTOCTask", "FAILED")
                 raise ValueError(f"TOC hierarchy errors saved to {error_file}")
             
-            # Save to database
-            db = DatabaseManager(self.config.get_database_path())
-            db.save_chunks(chunks)
+            # Save chunks using WriterService
+            saved_count = writer_service.save_toc_chunks(chunks)
             
             # Save summary
             summary_file = f"{self.output_dir}/summary.txt"
             with open(summary_file, 'w') as f:
-                f.write(f"Parsed {len(chunks)} chunks from {self.toc_path}\n")
+                f.write(f"Parsed {saved_count} chunks from {self.toc_path}\n")
                 for chunk in chunks:
                     f.write(f"{chunk.hierarchical_id}: {chunk.title}\n")
             
             # Create completion flag
             with self.output().open('w') as f:
-                f.write(f"Completed parsing {len(chunks)} chunks")
+                f.write(f"Completed parsing {saved_count} chunks")
             
             # Persist task completion
             self._persist_task_progress("GLOBAL", "ParseTOCTask", "COMPLETED")
             
-            print(f"✅ Parsed {len(chunks)} chunks and saved to database")
+            print(f"✅ Parsed {saved_count} chunks and saved to WriterService")
             
         except Exception as e:
             self._persist_task_progress("GLOBAL", "ParseTOCTask", "FAILED")
             raise
+    
+    def _validate_hierarchy(self, chunks) -> list:
+        """Validate that all parent IDs exist in the chunk list"""
+        hierarchical_ids = {chunk.hierarchical_id for chunk in chunks}
+        errors = []
+        
+        for chunk in chunks:
+            if chunk.parent_hierarchical_id and chunk.parent_hierarchical_id not in hierarchical_ids:
+                errors.append(f"Missing parent '{chunk.parent_hierarchical_id}' for chunk '{chunk.hierarchical_id}'")
+        
+        return errors
     
     def _persist_task_progress(self, hierarchical_id: str, task_name: str, status: str):
         """Persist task progress to file"""

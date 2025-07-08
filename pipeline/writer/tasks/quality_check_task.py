@@ -3,8 +3,8 @@ from pathlib import Path
 from typing import List
 
 from components.structured_task import StructuredTask
-from pipeline.writer.database import DatabaseManager
-from pipeline.writer.models import ChunkStatus, ChunkData
+from writer.writer_service import WriterService
+from writer.models import ChunkStatus, ChunkData
 from pipeline.writer.config_loader import ConfigLoader
 from llm import LLMClient
 
@@ -39,12 +39,12 @@ class QualityCheckTask(StructuredTask):
         self._persist_task_progress("GLOBAL", f"QualityCheckTask_Iteration_{self.iteration}", "STARTED")
         
         try:
-            # Initialize components
-            db = DatabaseManager(self.config.get_database_path())
+            # Initialize WriterService and LLM
+            writer_service = WriterService()
             llm_client = LLMClient(model=self.task_config['model'])
             
             # Get recently completed chunks (from this iteration)
-            recently_completed_chunks = self._get_recently_completed_chunks(db)
+            recently_completed_chunks = self._get_recently_completed_chunks(writer_service)
             
             if not recently_completed_chunks:
                 print(f"✅ No recently completed chunks to check in iteration {self.iteration}")
@@ -56,7 +56,7 @@ class QualityCheckTask(StructuredTask):
             # Load TOC summary for context
             toc_summary = self._load_toc_summary()
             
-            # Process chunks in batches of 5
+            # Process chunks in batches
             total_issues = 0
             batch_count = 0
             
@@ -67,7 +67,7 @@ class QualityCheckTask(StructuredTask):
                 self._persist_task_progress(f"BATCH_{batch_count}_ITER_{self.iteration}", "QualityCheckTask", "IN_PROGRESS")
                 
                 # Check quality of this batch
-                issues = self._check_batch_quality(llm_client, batch, toc_summary)
+                issues = self._check_batch_quality(llm_client, writer_service, batch, toc_summary)
                 
                 if issues:
                     # Save issues to file
@@ -75,7 +75,7 @@ class QualityCheckTask(StructuredTask):
                     total_issues += len(issues)
                     
                     # Mark problematic chunks for revision
-                    self._mark_chunks_for_revision(db, issues)
+                    self._mark_chunks_for_revision(writer_service, issues)
                     
                     print(f"⚠️ Iteration {self.iteration}, Batch {batch_count}: Found {len(issues)} issues")
                 else:
@@ -99,7 +99,7 @@ class QualityCheckTask(StructuredTask):
             self._persist_task_progress("GLOBAL", f"QualityCheckTask_Iteration_{self.iteration}", "FAILED")
             raise
     
-    def _get_recently_completed_chunks(self, db: DatabaseManager) -> List[ChunkData]:
+    def _get_recently_completed_chunks(self, writer_service: WriterService) -> List[ChunkData]:
         """Get chunks that were recently completed (in current processing cycle)"""
         # Read progress file to find chunks completed in this iteration
         progress_file = self.config.get_progress_file()
@@ -115,28 +115,55 @@ class QualityCheckTask(StructuredTask):
                             if hierarchical_id != "GLOBAL":
                                 recently_completed_ids.add(hierarchical_id)
         
-        # Get these chunks from database
-        all_completed = db.get_chunks_by_status(ChunkStatus.COMPLETED)
+        # Get these chunks from WriterService
+        all_completed = writer_service.get_chunks_by_status(ChunkStatus.COMPLETED)
         recently_completed = [c for c in all_completed if c.hierarchical_id in recently_completed_ids]
         recently_completed.sort(key=lambda x: x.hierarchical_id)
         
         return recently_completed
     
-    def _check_batch_quality(self, llm_client: LLMClient, batch: List[ChunkData], toc_summary: str) -> List[dict]:
-        """Check quality of a batch of chunks"""
+    def _check_batch_quality(self, llm_client: LLMClient, writer_service: WriterService, 
+                           batch: List[ChunkData], toc_summary: str) -> List[dict]:
+        """Check quality of a batch of chunks with semantic context"""
         # Prepare batch content for analysis
         batch_content = self._format_batch_for_analysis(batch)
         
+        # Get semantic context for quality analysis
+        semantic_context = self._get_semantic_context_for_batch(writer_service, batch)
+        
         # Create quality check prompt
-        prompt = self._create_quality_prompt(batch_content, toc_summary)
+        prompt = self._create_quality_prompt(batch_content, toc_summary, semantic_context)
         
         # Get LLM analysis
-        analysis = llm_client.complete(prompt)
+        print(f"🔍 Analyzing quality of batch with {len(batch)} chunks...")
+        analysis = llm_client.chat(prompt)
         
         # Parse issues from analysis
         issues = self._parse_quality_issues(analysis, batch)
         
         return issues
+    
+    def _get_semantic_context_for_batch(self, writer_service: WriterService, batch: List[ChunkData]) -> str:
+        """Get semantic context using WriterService search capabilities"""
+        context_parts = []
+        
+        # For each chunk in batch, find semantically similar chunks for cross-reference
+        for chunk in batch:
+            if chunk.content:
+                # Find similar chunks to check for consistency
+                similar_results = writer_service.search_chunks_semantic(
+                    query=chunk.content[:200],  # First 200 chars as query
+                    max_results=3,
+                    min_similarity=0.7
+                )
+                
+                if similar_results:
+                    similar_chunks = [f"{r.chunk.hierarchical_id}: {r.chunk.title}" 
+                                    for r in similar_results if r.chunk.id != chunk.id]
+                    if similar_chunks:
+                        context_parts.append(f"Chunks similar to {chunk.hierarchical_id}: {', '.join(similar_chunks)}")
+        
+        return "\n".join(context_parts) if context_parts else "No semantic similarities found"
     
     def _format_batch_for_analysis(self, batch: List[ChunkData]) -> str:
         """Format batch chunks for quality analysis"""
@@ -145,15 +172,17 @@ class QualityCheckTask(StructuredTask):
         for chunk in batch:
             chunk_text = f"""
 CHUNK {chunk.hierarchical_id}: {chunk.title}
-STRESZCZENIE: {chunk.summary}
-TREŚĆ: {chunk.content}
+LEVEL: {chunk.level}
+PARENT: {chunk.parent_hierarchical_id or 'None'}
+STRESZCZENIE: {chunk.summary or 'Brak streszczenia'}
+TREŚĆ: {chunk.content or 'Brak treści'}
 ---"""
             formatted_chunks.append(chunk_text)
         
         return "\n".join(formatted_chunks)
     
-    def _create_quality_prompt(self, batch_content: str, toc_summary: str) -> str:
-        """Create quality check prompt"""
+    def _create_quality_prompt(self, batch_content: str, toc_summary: str, semantic_context: str) -> str:
+        """Create quality check prompt with semantic context"""
         prompt_config = self.task_config['prompt']
         
         user_prompt = prompt_config['user'].format(
@@ -161,7 +190,10 @@ TREŚĆ: {chunk.content}
             batch_content=batch_content
         )
         
-        return f"{prompt_config['system']}\n\n{user_prompt}"
+        # Add semantic context
+        enhanced_prompt = f"{user_prompt}\n\nKONTEKST SEMANTYCZNY:\n{semantic_context}"
+        
+        return f"{prompt_config['system']}\n\n{enhanced_prompt}"
     
     def _parse_quality_issues(self, analysis: str, batch: List[ChunkData]) -> List[dict]:
         """Parse quality issues from LLM analysis"""
@@ -172,19 +204,44 @@ TREŚĆ: {chunk.content}
         
         for line in lines:
             line = line.strip()
+            if not line:
+                continue
             
             # Look for hierarchical IDs in the analysis
             for chunk in batch:
-                if chunk.hierarchical_id in line and any(keyword in line.lower() for keyword in ['problem', 'błąd', 'niespójn', 'przepis', 'poprawi']):
-                    current_issue = {
+                if chunk.hierarchical_id in line and any(keyword in line.lower() for keyword in 
+                    ['problem', 'błąd', 'niespójn', 'przepis', 'poprawi', 'zmieni', 'usuń', 'dodaj']):
+                    
+                    # Determine action type
+                    action = 'review'
+                    if any(word in line.lower() for word in ['przepis', 'rewrite']):
+                        action = 'rewrite'
+                    elif any(word in line.lower() for word in ['usuń', 'remove']):
+                        action = 'remove'
+                    elif any(word in line.lower() for word in ['dodaj', 'add']):
+                        action = 'expand'
+                    
+                    issue = {
                         'hierarchical_id': chunk.hierarchical_id,
                         'chunk_id': chunk.id,
                         'issue_description': line,
-                        'action': 'rewrite' if 'przepis' in line.lower() else 'review'
+                        'action': action,
+                        'severity': self._assess_severity(line)
                     }
-                    issues.append(current_issue)
+                    issues.append(issue)
         
         return issues
+    
+    def _assess_severity(self, line: str) -> str:
+        """Assess issue severity based on keywords"""
+        line_lower = line.lower()
+        
+        if any(word in line_lower for word in ['krytyczny', 'poważny', 'błąd', 'sprzeczność']):
+            return 'high'
+        elif any(word in line_lower for word in ['drobny', 'minor', 'lekki']):
+            return 'low'
+        else:
+            return 'medium'
     
     def _save_batch_issues(self, batch_number: int, batch: List[ChunkData], issues: List[dict]):
         """Save issues found in batch to file"""
@@ -202,16 +259,25 @@ TREŚĆ: {chunk.content}
             for issue in issues:
                 f.write(f"\n- ID: {issue['hierarchical_id']}\n")
                 f.write(f"  ACTION: {issue['action']}\n")
+                f.write(f"  SEVERITY: {issue['severity']}\n")
                 f.write(f"  DESCRIPTION: {issue['issue_description']}\n")
     
-    def _mark_chunks_for_revision(self, db: DatabaseManager, issues: List[dict]):
+    def _mark_chunks_for_revision(self, writer_service: WriterService, issues: List[dict]):
         """Mark chunks with issues for revision"""
         for issue in issues:
-            chunk_id = issue['chunk_id']
             hierarchical_id = issue['hierarchical_id']
             action = issue['action']
+            severity = issue['severity']
             
             self._persist_task_progress(hierarchical_id, "QualityCheckTask", f"NEEDS_{action.upper()}")
+            
+            # Optionally update chunk status for high severity issues
+            if severity == 'high':
+                chunk = writer_service.get_chunk_by_hierarchical_id(hierarchical_id)
+                if chunk:
+                    chunk.status = ChunkStatus.IN_PROGRESS  # Mark for revision
+                    writer_service.persistence.save_chunk(chunk)
+                    writer_service.chunks[chunk.id] = chunk
     
     def _create_iteration_quality_report(self, checked_chunks: List[ChunkData], total_issues: int, batch_count: int):
         """Create quality report for this iteration"""
@@ -241,9 +307,14 @@ TREŚĆ: {chunk.content}
     
     def _load_toc_summary(self) -> str:
         """Load TOC summary for context"""
-        toc_short_path = f"{self.config.get_output_config()['base_dir']}/{self.toc_name}/toc_short.txt"
-        with open(toc_short_path, 'r', encoding='utf-8') as f:
-            return f.read()
+        toc_short_path = f"{self.config.get_output_config()['base_dir']}/{self.toc_name}/{self.config.get_output_config()['toc_short_filename']}"
+        
+        try:
+            with open(toc_short_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except FileNotFoundError:
+            print(f"⚠️ TOC summary not found at {toc_short_path}")
+            return "TOC summary not available"
     
     def _persist_task_progress(self, hierarchical_id: str, task_name: str, status: str):
         """Persist task progress to file"""

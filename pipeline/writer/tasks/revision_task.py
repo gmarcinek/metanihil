@@ -3,8 +3,8 @@ from pathlib import Path
 from typing import List, Optional
 
 from components.structured_task import StructuredTask
-from pipeline.writer.database import DatabaseManager
-from pipeline.writer.models import ChunkStatus, ChunkData
+from writer.writer_service import WriterService
+from writer.models import ChunkStatus, ChunkData
 from pipeline.writer.config_loader import ConfigLoader
 from llm import LLMClient
 
@@ -38,8 +38,8 @@ class RevisionTask(StructuredTask):
         self._persist_task_progress("GLOBAL", f"RevisionTask_Iteration_{self.iteration}", "STARTED")
         
         try:
-            # Initialize components
-            db = DatabaseManager(self.config.get_database_path())
+            # Initialize WriterService and LLM
+            writer_service = WriterService()
             llm_client = LLMClient(model=self.task_config['model'])
             
             # Find chunks that need revision from this iteration
@@ -52,53 +52,64 @@ class RevisionTask(StructuredTask):
                 self._persist_task_progress("GLOBAL", f"RevisionTask_Iteration_{self.iteration}", "COMPLETED")
                 return
             
-            # Get all chunks for context
-            all_chunks = db.get_chunks_by_status(ChunkStatus.COMPLETED)
-            all_chunks.sort(key=lambda x: x.hierarchical_id)
-            
             # Load TOC summary
             toc_summary = self._load_toc_summary()
             
             # Process each chunk needing revision
             revised_count = 0
-            for chunk_id in chunks_to_revise:
-                # Find the chunk and its neighbors
-                target_chunk = self._find_chunk_by_hierarchical_id(all_chunks, chunk_id)
+            for hierarchical_id in chunks_to_revise:
+                # Find the chunk
+                target_chunk = writer_service.get_chunk_by_hierarchical_id(hierarchical_id)
                 if not target_chunk:
-                    print(f"⚠️ Chunk {chunk_id} not found")
+                    print(f"⚠️ Chunk {hierarchical_id} not found")
                     continue
                 
-                neighbors = self._get_neighboring_chunks(all_chunks, target_chunk)
-                
-                self._persist_task_progress(chunk_id, f"RevisionTask_Iteration_{self.iteration}", "IN_PROGRESS")
+                self._persist_task_progress(hierarchical_id, f"RevisionTask_Iteration_{self.iteration}", "IN_PROGRESS")
                 
                 try:
                     # Store original content for comparison
                     original_content = target_chunk.content
                     original_summary = target_chunk.summary
                     
+                    # Get comprehensive context for revision
+                    revision_context = self._get_revision_context(writer_service, target_chunk, toc_summary)
+                    
                     # Revise the chunk
-                    revised_content = self._revise_chunk(llm_client, target_chunk, neighbors, toc_summary)
+                    revised_content = self._revise_chunk(llm_client, target_chunk, revision_context)
                     revised_summary = self._generate_revised_summary(llm_client, target_chunk, revised_content)
                     
-                    # Update chunk in database
-                    target_chunk.content = revised_content
-                    target_chunk.summary = revised_summary
-                    target_chunk.status = ChunkStatus.COMPLETED
-                    db.save_chunks([target_chunk])
+                    # Update chunk using WriterService (handles embedding update automatically)
+                    success = writer_service.update_chunk_content(
+                        chunk_id=target_chunk.id,
+                        content=revised_content,
+                        summary=revised_summary
+                    )
                     
-                    # Save revision output with before/after comparison
-                    self._save_revision_output(target_chunk, neighbors, original_content, original_summary)
-                    
-                    revised_count += 1
-                    self._persist_task_progress(chunk_id, f"RevisionTask_Iteration_{self.iteration}", "COMPLETED")
-                    print(f"✅ Revised chunk {chunk_id}: {target_chunk.title}")
+                    if success:
+                        # Save revision output with before/after comparison
+                        self._save_revision_output(
+                            target_chunk, 
+                            revision_context, 
+                            original_content, 
+                            original_summary,
+                            revised_content,
+                            revised_summary
+                        )
+                        
+                        revised_count += 1
+                        self._persist_task_progress(hierarchical_id, f"RevisionTask_Iteration_{self.iteration}", "COMPLETED")
+                        print(f"✅ Revised chunk {hierarchical_id}: {target_chunk.title}")
+                    else:
+                        raise ValueError("Failed to update chunk in WriterService")
                     
                 except Exception as e:
+                    # Mark chunk as failed
                     target_chunk.status = ChunkStatus.FAILED
-                    db.save_chunks([target_chunk])
-                    self._persist_task_progress(chunk_id, f"RevisionTask_Iteration_{self.iteration}", "FAILED")
-                    print(f"❌ Failed to revise chunk {chunk_id}: {str(e)}")
+                    writer_service.persistence.save_chunk(target_chunk)
+                    writer_service.chunks[target_chunk.id] = target_chunk
+                    
+                    self._persist_task_progress(hierarchical_id, f"RevisionTask_Iteration_{self.iteration}", "FAILED")
+                    print(f"❌ Failed to revise chunk {hierarchical_id}: {str(e)}")
             
             # Create revision summary report
             self._create_revision_summary(chunks_to_revise, revised_count)
@@ -128,7 +139,7 @@ class RevisionTask(StructuredTask):
         with open(progress_file, 'r') as f:
             for line in f:
                 if ('QualityCheckTask' in line and 
-                    ('NEEDS_REWRITE' in line or 'NEEDS_REVIEW' in line)):
+                    ('NEEDS_REWRITE' in line or 'NEEDS_REVIEW' in line or 'NEEDS_EXPAND' in line)):
                     
                     # Check if this is from a recent quality check (could be from any iteration)
                     parts = line.strip().split(' | ')
@@ -139,56 +150,89 @@ class RevisionTask(StructuredTask):
         
         return chunks_to_revise
     
-    def _find_chunk_by_hierarchical_id(self, chunks: List[ChunkData], hierarchical_id: str) -> Optional[ChunkData]:
-        """Find chunk by hierarchical ID"""
-        for chunk in chunks:
-            if chunk.hierarchical_id == hierarchical_id:
-                return chunk
-        return None
-    
-    def _get_neighboring_chunks(self, all_chunks: List[ChunkData], target_chunk: ChunkData) -> dict:
-        """Get previous and next chunks"""
-        target_index = None
-        for i, chunk in enumerate(all_chunks):
-            if chunk.hierarchical_id == target_chunk.hierarchical_id:
-                target_index = i
-                break
+    def _get_revision_context(self, writer_service: WriterService, target_chunk: ChunkData, toc_summary: str) -> dict:
+        """Get comprehensive context for revision using WriterService capabilities"""
+        # Get basic processing context (previous/next chunks)
+        basic_context = writer_service.get_processing_context(target_chunk)
         
-        if target_index is None:
-            return {"previous": None, "next": None}
+        # Get semantic context - similar chunks for reference
+        semantic_context = []
+        if target_chunk.content:
+            similar_results = writer_service.search_chunks_semantic(
+                query=target_chunk.content[:300],  # First 300 chars
+                max_results=5,
+                min_similarity=0.6
+            )
+            
+            semantic_context = [
+                {
+                    'hierarchical_id': r.chunk.hierarchical_id,
+                    'title': r.chunk.title,
+                    'summary': r.chunk.summary,
+                    'similarity': r.similarity_score
+                }
+                for r in similar_results if r.chunk.id != target_chunk.id
+            ]
         
-        previous_chunk = all_chunks[target_index - 1] if target_index > 0 else None
-        next_chunk = all_chunks[target_index + 1] if target_index < len(all_chunks) - 1 else None
+        # Get contextual chunks for LLM processing
+        contextual_chunks = writer_service.get_contextual_chunks(
+            query=f"{target_chunk.hierarchical_id} {target_chunk.title}",
+            max_chunks=8,
+            threshold=0.5
+        )
         
         return {
-            "previous": previous_chunk,
-            "next": next_chunk
+            'basic_context': basic_context,
+            'semantic_context': semantic_context,
+            'contextual_chunks': contextual_chunks,
+            'toc_summary': toc_summary,
+            'target_chunk': target_chunk
         }
     
-    def _revise_chunk(self, llm_client: LLMClient, chunk: ChunkData, neighbors: dict, toc_summary: str) -> str:
-        """Revise chunk content based on TOC summary and neighbors"""
-        # Build context from neighbors and TOC
-        context = self._build_revision_context(chunk, neighbors, toc_summary)
+    def _revise_chunk(self, llm_client: LLMClient, chunk: ChunkData, revision_context: dict) -> str:
+        """Revise chunk content using comprehensive context"""
+        # Build context from all sources
+        context_text = self._build_revision_context_text(revision_context)
         
         # Create revision prompt
-        prompt = self._create_revision_prompt(chunk, context)
+        prompt = self._create_revision_prompt(chunk, context_text)
         
-        return llm_client.complete(prompt)
+        print(f"🔧 Revising chunk {chunk.hierarchical_id} with semantic context")
+        return llm_client.chat(prompt)
     
-    def _build_revision_context(self, chunk: ChunkData, neighbors: dict, toc_summary: str) -> str:
-        """Build context for revision"""
-        context_parts = [f"SCENARIUSZ CAŁOŚCI:\n{toc_summary}"]
+    def _build_revision_context_text(self, revision_context: dict) -> str:
+        """Build comprehensive context text for revision"""
+        context_parts = []
         
-        if neighbors["previous"]:
-            context_parts.append(f"POPRZEDNI FRAGMENT ({neighbors['previous'].hierarchical_id}):\n{neighbors['previous'].summary}")
+        # TOC summary
+        context_parts.append(f"SCENARIUSZ CAŁOŚCI:\n{revision_context['toc_summary']}")
         
-        if neighbors["next"]:
-            context_parts.append(f"NASTĘPNY FRAGMENT ({neighbors['next'].hierarchical_id}):\n{neighbors['next'].summary}")
+        # Basic context (previous/next)
+        basic = revision_context['basic_context']
+        if basic.get('previous_chunk') and basic['previous_chunk'].summary:
+            context_parts.append(f"POPRZEDNI FRAGMENT ({basic['previous_chunk'].hierarchical_id}):\n{basic['previous_chunk'].summary}")
+        
+        if basic.get('next_chunk') and basic['next_chunk'].summary:
+            context_parts.append(f"NASTĘPNY FRAGMENT ({basic['next_chunk'].hierarchical_id}):\n{basic['next_chunk'].summary}")
+        
+        # Semantic context
+        if revision_context['semantic_context']:
+            similar_parts = []
+            for similar in revision_context['semantic_context'][:3]:  # Top 3 similar
+                similar_parts.append(f"- {similar['hierarchical_id']}: {similar['title']} (podobieństwo: {similar['similarity']:.2f})")
+            context_parts.append(f"PODOBNE FRAGMENTY:\n" + "\n".join(similar_parts))
+        
+        # Contextual chunks
+        if revision_context['contextual_chunks']:
+            contextual_parts = []
+            for ctx in revision_context['contextual_chunks'][:3]:  # Top 3 contextual
+                contextual_parts.append(f"- {ctx['hierarchical_id']}: {ctx['title']}")
+            context_parts.append(f"KONTEKST TEMATYCZNY:\n" + "\n".join(contextual_parts))
         
         return "\n\n".join(context_parts)
     
     def _create_revision_prompt(self, chunk: ChunkData, context: str) -> str:
-        """Create revision prompt"""
+        """Create revision prompt with comprehensive context"""
         prompt_config = self.task_config['prompt']
         
         user_prompt = prompt_config['user'].format(
@@ -210,10 +254,12 @@ class RevisionTask(StructuredTask):
             content=content
         )
         
-        return llm_client.complete(f"{prompt_config['system']}\n\n{user_prompt}")
+        return llm_client.chat(f"{prompt_config['system']}\n\n{user_prompt}")
     
-    def _save_revision_output(self, chunk: ChunkData, neighbors: dict, original_content: str, original_summary: str):
-        """Save revision output to file with before/after comparison"""
+    def _save_revision_output(self, chunk: ChunkData, revision_context: dict, 
+                            original_content: str, original_summary: str,
+                            revised_content: str, revised_summary: str):
+        """Save comprehensive revision output with context analysis"""
         revision_dir = f"{self.output_dir}/revisions"
         Path(revision_dir).mkdir(parents=True, exist_ok=True)
         
@@ -221,20 +267,30 @@ class RevisionTask(StructuredTask):
         with open(revision_file, 'w', encoding='utf-8') as f:
             f.write(f"CHUNK REVISION - ITERATION {self.iteration}\n")
             f.write(f"ID: {chunk.hierarchical_id}\n")
-            f.write(f"TITLE: {chunk.title}\n\n")
+            f.write(f"TITLE: {chunk.title}\n")
+            f.write(f"LEVEL: {chunk.level}\n")
+            f.write(f"PARENT: {chunk.parent_hierarchical_id or 'None'}\n\n")
             
-            if neighbors["previous"]:
-                f.write(f"PREVIOUS: {neighbors['previous'].hierarchical_id} - {neighbors['previous'].title}\n")
-            if neighbors["next"]:
-                f.write(f"NEXT: {neighbors['next'].hierarchical_id} - {neighbors['next'].title}\n")
+            # Context information
+            basic = revision_context['basic_context']
+            if basic.get('previous_chunk'):
+                f.write(f"PREVIOUS: {basic['previous_chunk'].hierarchical_id} - {basic['previous_chunk'].title}\n")
+            if basic.get('next_chunk'):
+                f.write(f"NEXT: {basic['next_chunk'].hierarchical_id} - {basic['next_chunk'].title}\n")
+            
+            # Semantic context
+            if revision_context['semantic_context']:
+                f.write(f"\nSEMANTIC SIMILAR CHUNKS:\n")
+                for similar in revision_context['semantic_context']:
+                    f.write(f"- {similar['hierarchical_id']}: {similar['title']} ({similar['similarity']:.2f})\n")
             
             f.write(f"\n" + "="*50 + "\n")
             f.write(f"ORIGINAL CONTENT:\n{original_content}\n")
             f.write(f"\nORIGINAL SUMMARY:\n{original_summary}\n")
             
             f.write(f"\n" + "="*50 + "\n")
-            f.write(f"REVISED CONTENT:\n{chunk.content}\n")
-            f.write(f"\nREVISED SUMMARY:\n{chunk.summary}\n")
+            f.write(f"REVISED CONTENT:\n{revised_content}\n")
+            f.write(f"\nREVISED SUMMARY:\n{revised_summary}\n")
     
     def _create_revision_summary(self, chunks_to_revise: List[str], revised_count: int):
         """Create summary of revision iteration"""
@@ -260,9 +316,14 @@ class RevisionTask(StructuredTask):
     
     def _load_toc_summary(self) -> str:
         """Load TOC summary for context"""
-        toc_short_path = f"{self.config.get_output_config()['base_dir']}/{self.toc_name}/toc_short.txt"
-        with open(toc_short_path, 'r', encoding='utf-8') as f:
-            return f.read()
+        toc_short_path = f"{self.config.get_output_config()['base_dir']}/{self.toc_name}/{self.config.get_output_config()['toc_short_filename']}"
+        
+        try:
+            with open(toc_short_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except FileNotFoundError:
+            print(f"⚠️ TOC summary not found at {toc_short_path}")
+            return "TOC summary not available"
     
     def _persist_task_progress(self, hierarchical_id: str, task_name: str, status: str):
         """Persist task progress to file"""

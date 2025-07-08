@@ -18,14 +18,13 @@ def main():
     print()
 
     uvicorn.run(
-        "api.main:app",  # Changed from api.server:app to api.main:app
+        "api.main:app",
         host="0.0.0.0",
         port=8000,
         reload=True,
         reload_dirs=[
             str(Path(__file__).parent),
-            str(Path(__file__).parent.parent / "semantic_store" / "entities"),
-            str(Path(__file__).parent.parent / "semantic_store" / "chunks"),
+            str(Path(__file__).parent.parent / "writer"),  # ✅ NOWE - writer system
         ],
         log_level="info"
     )

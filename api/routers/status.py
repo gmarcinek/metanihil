@@ -1,50 +1,64 @@
 """
-Status endpoints - basic API info and health checks
+Status endpoints - API info and health checks
 """
 
 from fastapi import APIRouter, HTTPException
-
-from ..deps import get_store, get_store_status
-
-router = APIRouter()
+from api.main import get_writer_service
+from api.models import ServiceStatsResponse
 
 
-@router.get("/")
-async def root():
-    """API info and available endpoints"""
-    return {
-        "message": "NER Knowledge API",
-        "version": "1.0.0",
-        "endpoints": ["/stats", "/entities", "/search", "/process", "/graph", "/relationships"]
-    }
+router = APIRouter(tags=["status"])
 
 
-@router.get("/store-status")
-async def store_status():
-    """Get semantic store status and basic info"""
-    return get_store_status()
-
-
-@router.get("/stats")
-async def get_stats():
-    """Get comprehensive semantic store statistics"""
+@router.get("/status")
+async def get_api_status():
+    """Get API status and basic info"""
     try:
-        store = get_store()
-        stats = store.get_stats()
-        
-        # Handle relationships - can be int or dict
-        relationships_count = stats.get('relationships', 0)
-        if isinstance(relationships_count, dict):
-            relationships_count = relationships_count.get('total_relationships', 0)
-        elif not isinstance(relationships_count, int):
-            relationships_count = 0
+        service = get_writer_service()
+        stats = service.get_statistics()
         
         return {
-            "entities": stats.get('entities', 0),
-            "chunks": stats.get('chunks', 0),
-            "relationships": relationships_count,
-            "storage_size_mb": round(stats.get('storage', {}).get('total_size_mb', 0), 2),
-            "embedding_model": stats.get('embedder', {}).get('model_name', 'unknown'),
+            "status": "ready",
+            "service": "WriterService",
+            "chunks_loaded": stats["total_chunks"],
+            "faiss_available": stats["faiss"]["available"],
+            "embedding_model": stats["embeddings"]["model"]
         }
-    except RuntimeError:
-        raise HTTPException(status_code=500, detail="Store not initialized")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Service error: {str(e)}")
+
+
+@router.get("/stats", response_model=ServiceStatsResponse)
+async def get_comprehensive_stats():
+    """Get comprehensive WriterService statistics"""
+    try:
+        service = get_writer_service()
+        stats = service.get_statistics()
+        
+        return ServiceStatsResponse(
+            total_chunks=stats["total_chunks"],
+            status_counts=stats["status_counts"],
+            storage_size_mb=stats["storage"].get("storage_size_mb", 0.0),
+            faiss_vectors=stats["faiss"].get("total_vectors", 0),
+            embedding_model=stats["embeddings"]["model"],
+            cache_stats=stats["embeddings"].get("cache_stats", {})
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
+
+
+@router.get("/cleanup")
+async def cleanup_orphaned_data():
+    """Cleanup orphaned data across all systems"""
+    try:
+        service = get_writer_service()
+        results = service.cleanup_all()
+        
+        return {
+            "status": "completed",
+            "orphaned_files_removed": results["orphaned_files"],
+            "orphaned_embeddings_removed": results["orphaned_embeddings"],
+            "message": "Cleanup completed successfully"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Cleanup failed: {str(e)}")
