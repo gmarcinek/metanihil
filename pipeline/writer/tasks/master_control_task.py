@@ -2,13 +2,13 @@ import luigi
 from pathlib import Path
 from typing import List
 
-from components.structured_task import StructuredTask
-from pipeline.writer.database import DatabaseManager
-from pipeline.writer.models import ChunkStatus
+from pipeline.writer.tasks.base_writer_task import BaseWriterTask
+from writer.writer_service import WriterService
+from writer.models import ChunkStatus
 from pipeline.writer.config_loader import ConfigLoader
 
 
-class MasterControlTask(StructuredTask):
+class MasterControlTask(BaseWriterTask):
     toc_path = luigi.Parameter()
     batch_size = luigi.IntParameter(default=5)
     max_iterations = luigi.IntParameter(default=100)
@@ -20,6 +20,10 @@ class MasterControlTask(StructuredTask):
         self.output_dir = f"{self.config.get_output_config()['base_dir']}/{self.toc_name}/master_control"
         self.iteration = 0
     
+    @property 
+    def task_name(self) -> str:
+        return "master_control"
+
     def output(self):
         return luigi.LocalTarget(f"{self.output_dir}/master_completed.flag")
     
@@ -31,8 +35,8 @@ class MasterControlTask(StructuredTask):
         self._persist_task_progress("GLOBAL", "MasterControlTask", "STARTED")
         
         try:
-            # Initialize database
-            db = DatabaseManager(self.config.get_database_path())
+            # Initialize WriterService
+            writer_service = WriterService()
             
             # First, ensure TOC is parsed
             self._ensure_toc_parsed()
@@ -45,7 +49,7 @@ class MasterControlTask(StructuredTask):
                 self._persist_task_progress("GLOBAL", f"MasterControlTask_Iteration_{self.iteration}", "STARTED")
                 
                 # Check what needs to be done
-                status = self._assess_current_status(db)
+                status = self._assess_current_status(writer_service)
                 
                 if status == "all_completed":
                     print("✅ All chunks processed successfully!")
@@ -67,7 +71,7 @@ class MasterControlTask(StructuredTask):
                 self._persist_task_progress("GLOBAL", f"MasterControlTask_Iteration_{self.iteration}", "COMPLETED")
                 
                 # Log current progress
-                self._log_progress(db)
+                self._log_progress(writer_service)
             
             if self.iteration >= self.max_iterations:
                 print(f"⚠️ Reached maximum iterations ({self.max_iterations})")
@@ -100,7 +104,7 @@ class MasterControlTask(StructuredTask):
         
         print("✅ TOC setup completed")
     
-    def _assess_current_status(self, db: DatabaseManager) -> str:
+    def _assess_current_status(self, writer_service: WriterService) -> str:
         """Assess what needs to be done next"""
         # Check for chunks needing revision
         chunks_needing_revision = self._get_chunks_needing_revision()
@@ -108,12 +112,12 @@ class MasterControlTask(StructuredTask):
             return "needs_revision"
         
         # Check for unprocessed chunks
-        not_started_chunks = db.get_chunks_by_status(ChunkStatus.NOT_STARTED)
+        not_started_chunks = writer_service.get_chunks_by_status(ChunkStatus.NOT_STARTED)
         if not_started_chunks:
             return "needs_processing"
         
         # Check if we have any chunks at all
-        completed_chunks = db.get_chunks_by_status(ChunkStatus.COMPLETED)
+        completed_chunks = writer_service.get_chunks_by_status(ChunkStatus.COMPLETED)
         if not completed_chunks:
             return "no_chunks"
         
@@ -191,12 +195,12 @@ class MasterControlTask(StructuredTask):
         
         return chunks_to_revise
     
-    def _log_progress(self, db: DatabaseManager):
+    def _log_progress(self, writer_service: WriterService):
         """Log current progress"""
-        not_started = len(db.get_chunks_by_status(ChunkStatus.NOT_STARTED))
-        in_progress = len(db.get_chunks_by_status(ChunkStatus.IN_PROGRESS))
-        completed = len(db.get_chunks_by_status(ChunkStatus.COMPLETED))
-        failed = len(db.get_chunks_by_status(ChunkStatus.FAILED))
+        not_started = len(writer_service.get_chunks_by_status(ChunkStatus.NOT_STARTED))
+        in_progress = len(writer_service.get_chunks_by_status(ChunkStatus.IN_PROGRESS))
+        completed = len(writer_service.get_chunks_by_status(ChunkStatus.COMPLETED))
+        failed = len(writer_service.get_chunks_by_status(ChunkStatus.FAILED))
         
         total = not_started + in_progress + completed + failed
         

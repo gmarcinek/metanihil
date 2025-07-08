@@ -2,14 +2,15 @@ import luigi
 from pathlib import Path
 from typing import List, Optional
 
-from components.structured_task import StructuredTask
+
+from pipeline.writer.tasks.base_writer_task import BaseWriterTask
 from writer.writer_service import WriterService
 from writer.models import ChunkStatus, ChunkData
 from pipeline.writer.config_loader import ConfigLoader
 from llm import LLMClient
 
 
-class RevisionTask(StructuredTask):
+class RevisionTask(BaseWriterTask):
     toc_path = luigi.Parameter()
     iteration = luigi.IntParameter(default=1)
     
@@ -19,6 +20,10 @@ class RevisionTask(StructuredTask):
         self.config = ConfigLoader()
         self.task_config = self.config.get_task_config('RevisionTask')
         self.output_dir = f"{self.config.get_output_config()['base_dir']}/{self.toc_name}/revision/iteration_{self.iteration}"
+    
+    @property 
+    def task_name(self) -> str:
+        return "revistion_task"
     
     def requires(self):
         from .quality_check_task import QualityCheckTask

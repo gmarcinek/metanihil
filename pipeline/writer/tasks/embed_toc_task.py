@@ -1,13 +1,13 @@
 import luigi
 from pathlib import Path
 
-from components.structured_task import StructuredTask
+from pipeline.writer.tasks.base_writer_task import BaseWriterTask
 from writer.writer_service import WriterService
 from writer.models import ChunkStatus
 from pipeline.writer.config_loader import ConfigLoader
 
 
-class EmbedTOCTask(StructuredTask):
+class EmbedTOCTask(BaseWriterTask):
     toc_path = luigi.Parameter()
     
     def __init__(self, *args, **kwargs):
@@ -16,6 +16,10 @@ class EmbedTOCTask(StructuredTask):
         self.config = ConfigLoader()
         self.task_config = self.config.get_task_config('EmbedTOCTask')
         self.output_dir = f"{self.config.get_output_config()['base_dir']}/{self.toc_name}/embed_toc"
+    
+    @property 
+    def task_name(self) -> str:
+        return "embed_toc"
     
     def requires(self):
         from .parse_toc_task import ParseTOCTask

@@ -1,14 +1,14 @@
 import luigi
 from pathlib import Path
 
-from components.structured_task import StructuredTask
+from pipeline.writer.tasks.base_writer_task import BaseWriterTask
 from writer.writer_service import WriterService
 from writer.models import ChunkStatus, ChunkData
 from pipeline.writer.config_loader import ConfigLoader
 from llm import LLMClient
 
 
-class ProcessChunksTask(StructuredTask):
+class ProcessChunksTask(BaseWriterTask):
     toc_path = luigi.Parameter()
     batch_size = luigi.IntParameter(default=5)
     iteration = luigi.IntParameter(default=1)
@@ -19,6 +19,10 @@ class ProcessChunksTask(StructuredTask):
         self.config = ConfigLoader()
         self.task_config = self.config.get_task_config('ProcessChunksTask')
         self.output_dir = f"{self.config.get_output_config()['base_dir']}/{self.toc_name}/process_chunks/iteration_{self.iteration}"
+    
+    @property 
+    def task_name(self) -> str:
+        return "proces_chunks"
     
     def requires(self):
         from .create_summary_task import CreateSummaryTask

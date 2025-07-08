@@ -2,14 +2,14 @@ import luigi
 from pathlib import Path
 from typing import List
 
-from components.structured_task import StructuredTask
+from pipeline.writer.tasks.base_writer_task import BaseWriterTask
 from writer.writer_service import WriterService
 from writer.models import ChunkStatus, ChunkData
 from pipeline.writer.config_loader import ConfigLoader
 from llm import LLMClient
 
 
-class FinalQATask(StructuredTask):
+class FinalQATask(BaseWriterTask):
     toc_path = luigi.Parameter()
     
     def __init__(self, *args, **kwargs):
@@ -18,6 +18,10 @@ class FinalQATask(StructuredTask):
         self.config = ConfigLoader()
         self.task_config = self.config.get_task_config('FinalQATask')
         self.output_dir = f"{self.config.get_output_config()['base_dir']}/{self.toc_name}/final_qa"
+    
+    @property 
+    def task_name(self) -> str:
+        return "final_qa"
     
     def requires(self):
         # This should be called when all chunks are processed

@@ -1,5 +1,3 @@
-Meta Nihilizm pragmatyczny trzeciego stopnia lub epistemiczna inżynieria wsteczna
-Spis treści
 0.0 Wstęp
 0.1 Moment pęknięcia
 0.1.1 Dostrzeżenie, że moje pytania mogą być funkcją mojej struktury, nie świata

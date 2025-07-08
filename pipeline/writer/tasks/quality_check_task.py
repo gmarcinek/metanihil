@@ -2,14 +2,14 @@ import luigi
 from pathlib import Path
 from typing import List
 
-from components.structured_task import StructuredTask
+from pipeline.writer.tasks.base_writer_task import BaseWriterTask
 from writer.writer_service import WriterService
 from writer.models import ChunkStatus, ChunkData
 from pipeline.writer.config_loader import ConfigLoader
 from llm import LLMClient
 
 
-class QualityCheckTask(StructuredTask):
+class QualityCheckTask(BaseWriterTask):
     toc_path = luigi.Parameter()
     iteration = luigi.IntParameter(default=1)
     
@@ -20,6 +20,10 @@ class QualityCheckTask(StructuredTask):
         self.task_config = self.config.get_task_config('QualityCheckTask')
         self.output_dir = f"{self.config.get_output_config()['base_dir']}/{self.toc_name}/quality_check/iteration_{self.iteration}"
         self.batch_size = 5
+    
+    @property 
+    def task_name(self) -> str:
+        return "quality_check"
     
     def requires(self):
         from .process_chunks_task import ProcessChunksTask

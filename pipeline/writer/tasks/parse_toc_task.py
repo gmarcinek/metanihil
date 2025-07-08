@@ -1,12 +1,13 @@
 import luigi
 from pathlib import Path
 
-from components.structured_task import StructuredTask
+
+from pipeline.writer.tasks.base_writer_task import BaseWriterTask
 from writer.writer_service import WriterService
 from pipeline.writer.config_loader import ConfigLoader
 
 
-class ParseTOCTask(StructuredTask):
+class ParseTOCTask(BaseWriterTask):
     toc_path = luigi.Parameter()
     
     def __init__(self, *args, **kwargs):
@@ -15,6 +16,10 @@ class ParseTOCTask(StructuredTask):
         self.config = ConfigLoader()
         self.task_config = self.config.get_task_config('ParseTOCTask')
         self.output_dir = f"{self.config.get_output_config()['base_dir']}/{self.toc_name}/parse_toc"
+    
+    @property 
+    def task_name(self) -> str:
+        return "parse_toc"
     
     def output(self):
         return luigi.LocalTarget(f"{self.output_dir}/completed.flag")
