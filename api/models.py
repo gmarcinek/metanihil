@@ -54,7 +54,7 @@ class SearchRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=1000)
     max_results: int = Field(10, ge=1, le=50)
     min_similarity: float = Field(0.7, ge=0.0, le=1.0)
-    search_type: str = Field("combined", regex="^(semantic|text|combined)$")
+    search_type: str = Field("combined", pattern="^(semantic|text|combined)$")
 
 
 class SearchResult(BaseModel):

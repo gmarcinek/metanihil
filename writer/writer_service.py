@@ -3,6 +3,8 @@ from pathlib import Path
 from typing import List, Optional, Dict, Any, Tuple
 from datetime import datetime
 import re
+from dotenv import load_dotenv
+load_dotenv()
 
 from .models import ChunkData, ChunkStatus, SearchResult, ProcessingStats, TOCEntry
 from .persistence import ChunkPersistence

@@ -40,6 +40,7 @@ torchvision = "^0.22.1"
 app = "orchestrator.main:main"
 serve = "api.start:main"
 structure-pipeline = "pipeline.structure.run_structure_pipeline:main"
+writer-pipeline = "pipeline.writer.run_pipeline:main"
 
 [build-system]
 requires = ["poetry-core>=2.0.0"]
