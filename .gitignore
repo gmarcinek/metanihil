@@ -1,0 +1,47 @@
+# 🔧 Python cache i artefakty
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# 🧪 Test cache
+.mypy_cache/
+.pytest_cache/
+
+# 📦 Virtualenv (jeśli nie zarządzasz przez Poetry)
+.env/
+.venv/
+venv/
+
+# 📁 Output agenta
+/output/
+/_output/
+/.cache
+
+# 🛠 IDE (VSCode, PyCharm)
+.vscode/
+.idea/
+
+# 🔐 Sekrety
+.env
+
+# 📝 Logi, backupy
+*.log
+*.tmp
+*.bak
+
+# 📄 Systemowe
+.DS_Store
+Thumbs.db
+
+# 💥 Wyklucz pliki tymczasowe edytorów
+*~ 
+*.swp
+
+# Node
+node_modules/
+
+# output
+/entities/
+/semantic_store/

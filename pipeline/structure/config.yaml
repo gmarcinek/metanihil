@@ -1,0 +1,15 @@
+SemanticStructureDetector:
+  extract_page_numbers: true
+  header_confidence_threshold: 0.7
+  max_pages: 1000
+  min_section_pages: 1
+  toc_detection_enabled: true
+StructureDetector:
+  max_pages: 1000
+  merge_gap_px: 5
+  min_block_area: 100
+  zoom_factor: 1.0
+StructureSplitter:
+  max_filename_length: 50
+  min_section_height_px: 10
+  output_format: pdf

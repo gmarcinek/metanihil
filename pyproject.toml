@@ -1,0 +1,49 @@
+[tool.poetry]
+name = "book-agent"
+version = "0.1.0"
+description = ""
+authors = ["gmarcinek <grzegorz.marcinek@gmail.com>"]
+packages = [
+    { include = "api" },
+    { include = "orchestrator" },
+    { include = "ner" },
+    { include = "llm" },
+    { include = "luigi_pipeline" },
+    { include = "ocr" },
+    { include = "pipeline" },
+]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.12"
+openai = ">=1.79.0,<2.0.0"
+pydantic = ">=2.11.4,<3.0.0"
+python-dotenv = ">=1.1.0,<2.0.0"
+anthropic = "^0.52.2"
+protobuf = "^6.31.1"
+psutil = "^7.0.0"
+pypdf2 = "^3.0.1"
+python-docx = "^1.1.0" 
+striprtf = "^0.0.26"
+faiss-cpu = "^1.11.0"
+networkx = "^3.5"
+numpy = "^2.3.0"
+matplotlib = "^3.10.3"
+pytest = "^8.4.0"
+uvicorn = "^0.34.3"
+fastapi = "^0.115.13"
+watchdog = "^6.0.0"
+luigi = "^3.6.0"
+sqlalchemy = "^2.0.0"
+pymupdf = "^1.26.1"
+surya-ocr = "^0.14.6"
+streamlit = "^1.46.1"
+torchvision = "^0.22.1"
+
+[tool.poetry.scripts]
+app = "orchestrator.main:main"
+serve = "api.start:main"
+structure-pipeline = "pipeline.structure.run_structure_pipeline:main"
+
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
