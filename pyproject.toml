@@ -1,14 +1,10 @@
 [tool.poetry]
-name = "book-agent"
+name = "metanihil"
 version = "0.1.0"
 description = ""
 authors = ["gmarcinek <grzegorz.marcinek@gmail.com>"]
 packages = [
-    { include = "api" },
-    { include = "orchestrator" },
-    { include = "ner" },
     { include = "llm" },
-    { include = "luigi_pipeline" },
     { include = "ocr" },
     { include = "pipeline" },
 ]
