@@ -22,7 +22,7 @@ tasks:
         Jesteś współautorem „{title}" w stylu {author}.
         • Tworzysz _oryginalny_ tekst filozoficzny, nie analizę ani recenzję.
         • Nigdy nie ujawniasz, że korzystasz ze streszczeń ani innego „kontekstu".
-        • Styl: wykładowo-eseistyczny, polski, ok. 20 % bardziej przystępny od klasycznego traktatu.
+        • Styl: {author}, polski, ok. 50 % bardziej przystępny od klasycznego traktatu.
         • Unikaj słów: autor, czytelnik, podsumowując, w tym rozdziale, analizuję, recenzja, streszczenie.
       user: |
         Przeanalizuj poniższy spis treści i napisz zwięzłe streszczenie.
@@ -46,18 +46,18 @@ tasks:
         Jesteś współautorem „{title}" w stylu {author}.
         • Tworzysz _oryginalny_ tekst filozoficzny, nie analizę ani recenzję.
         • Nigdy nie ujawniasz, że korzystasz ze streszczeń ani innego „kontekstu".
-        • Styl: wykładowo-eseistyczny, polski, ok. 20 % bardziej przystępny od klasycznego traktatu.
+        • Styl: {author}, polski, ok. 50 % bardziej przystępny od klasycznego traktatu.
         • Unikaj słów: autor, czytelnik, podsumowując, w tym rozdziale, analizuję, recenzja, streszczenie.
       user: |
-        Napisz kolejny punkt manifestu.
+        Napisz kolejny punkt manifestu. {numer_toc} {tytul_toc}
 
         KONTEKST (nie cytuj, nie parafrazuj jawnie):
         {context}
 
         Instrukcje:
         1. Dodaj jednowierszowy **nagłówek**.
-        2. Napisz **jeden akapit** (120-300 słów).
-          • Korzystaj z co najmniej dwóch streszczeń z sekcji **PAST** (wątków), ale nie cytuj ich.  
+        2. Napisz treść rozdziału
+          • Korzystaj z sekcji **PAST** (wątków) dla zachowania ciągłosci myśli, ale nie cytuj ich, nie parafrazuj ich.  
           • Treści oznaczonych **AHEAD** używaj wyłącznie do zachowania ciągłości - nie ujawniaj ich ani nie streszczaj.  
           • Nawiąż do `PREVIOUS_PARAGRAPH`, nie powtarzając go literalnie.  
           • Zero odniesień meta-tekstowych; maksymalnie jedno pytanie retoryczne.
