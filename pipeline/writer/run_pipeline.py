@@ -17,6 +17,10 @@ def main():
     parser.add_argument('toc_path', help='Path to TOC file')
     parser.add_argument('--batch-size', type=int, default=5, help='Number of chunks to process per batch (default: 5)')
     parser.add_argument('--max-iterations', type=int, default=100, help='Maximum number of iterations (default: 100)')
+    parser.add_argument('--author', type=str, default='współczesny filozof', 
+                       help='Author style to emulate (default: współczesny filozof)')
+    parser.add_argument('--title', type=str, default='Meta-Nihilizm Pragmatyczny III Stopnia',
+                       help='Title of the work being written (default: Meta-Nihilizm Pragmatyczny III Stopnia)')
     parser.add_argument('--local-scheduler', action='store_true', default=True, help='Use Luigi local scheduler')
     parser.add_argument('--workers', type=int, default=1, help='Number of worker processes (default: 1)')
     
@@ -30,6 +34,8 @@ def main():
     
     print(f"🚀 Starting Writer Pipeline")
     print(f"   TOC file: {args.toc_path}")
+    print(f"   Author: {args.author}")
+    print(f"   Title: {args.title}")
     print(f"   Batch size: {args.batch_size}")
     print(f"   Max iterations: {args.max_iterations}")
     print(f"   Workers: {args.workers}")
@@ -39,7 +45,9 @@ def main():
     master_task = MasterControlTask(
         toc_path=args.toc_path,
         batch_size=args.batch_size,
-        max_iterations=args.max_iterations
+        max_iterations=args.max_iterations,
+        author=args.author,
+        title=args.title
     )
     
     # Run pipeline
@@ -60,11 +68,11 @@ def main():
             
     except KeyboardInterrupt:
         print("\n⚠️ Pipeline interrupted by user")
-        _print_resume_instructions(args.toc_path, args.batch_size, args.max_iterations)
+        _print_resume_instructions(args.toc_path, args.batch_size, args.max_iterations, args.author, args.title)
         sys.exit(1)
     except Exception as e:
         print(f"\n❌ Pipeline failed with error: {str(e)}")
-        _print_resume_instructions(args.toc_path, args.batch_size, args.max_iterations)
+        _print_resume_instructions(args.toc_path, args.batch_size, args.max_iterations, args.author, args.title)
         sys.exit(1)
 
 
@@ -85,10 +93,10 @@ def _print_completion_summary(toc_path: str):
         print(f"   Change map: output/{toc_name}/final_qa/hierarchical_change_map.txt")
 
 
-def _print_resume_instructions(toc_path: str, batch_size: int, max_iterations: int):
+def _print_resume_instructions(toc_path: str, batch_size: int, max_iterations: int, author: str, title: str):
     """Print instructions for resuming pipeline"""
     print("\n🔄 To resume pipeline from where it left off:")
-    print(f"   python -m pipeline.writer.run_pipeline {toc_path} --batch-size {batch_size} --max-iterations {max_iterations}")
+    print(f"   python -m pipeline.writer.run_pipeline {toc_path} --batch-size {batch_size} --max-iterations {max_iterations} --author \"{author}\" --title \"{title}\"")
     print("\n📊 To check current progress:")
     print("   tail -f output/task_progress.txt")
     print("\n📂 To check outputs so far:")
@@ -104,30 +112,34 @@ def run_single_task():
     parser.add_argument('toc_path', help='Path to TOC file')
     parser.add_argument('--iteration', type=int, default=1, help='Iteration number (for process/quality/revision)')
     parser.add_argument('--batch-size', type=int, default=5, help='Batch size (for process task)')
+    parser.add_argument('--author', type=str, default='współczesny filozof', 
+                       help='Author style to emulate')
+    parser.add_argument('--title', type=str, default='Meta-Nihilizm Pragmatyczny III Stopnia',
+                       help='Title of the work being written')
     
     args = parser.parse_args()
     
     if args.task == 'parse':
         from pipeline.writer.tasks.parse_toc_task import ParseTOCTask
-        task = ParseTOCTask(toc_path=args.toc_path)
+        task = ParseTOCTask(toc_path=args.toc_path, author=args.author, title=args.title)
     elif args.task == 'embed':
         from pipeline.writer.tasks.embed_toc_task import EmbedTOCTask
-        task = EmbedTOCTask(toc_path=args.toc_path)
+        task = EmbedTOCTask(toc_path=args.toc_path, author=args.author, title=args.title)
     elif args.task == 'summary':
         from pipeline.writer.tasks.create_summary_task import CreateSummaryTask
-        task = CreateSummaryTask(toc_path=args.toc_path)
+        task = CreateSummaryTask(toc_path=args.toc_path, author=args.author, title=args.title)
     elif args.task == 'process':
         from pipeline.writer.tasks.process_chunks_task import ProcessChunksTask
-        task = ProcessChunksTask(toc_path=args.toc_path, iteration=args.iteration, batch_size=args.batch_size)
+        task = ProcessChunksTask(toc_path=args.toc_path, iteration=args.iteration, batch_size=args.batch_size, author=args.author, title=args.title)
     elif args.task == 'quality':
         from pipeline.writer.tasks.quality_check_task import QualityCheckTask
-        task = QualityCheckTask(toc_path=args.toc_path, iteration=args.iteration)
+        task = QualityCheckTask(toc_path=args.toc_path, iteration=args.iteration, author=args.author, title=args.title)
     elif args.task == 'revision':
         from pipeline.writer.tasks.revision_task import RevisionTask
-        task = RevisionTask(toc_path=args.toc_path, iteration=args.iteration)
+        task = RevisionTask(toc_path=args.toc_path, iteration=args.iteration, author=args.author, title=args.title)
     elif args.task == 'final-qa':
         from pipeline.writer.tasks.final_qa_task import FinalQATask
-        task = FinalQATask(toc_path=args.toc_path)
+        task = FinalQATask(toc_path=args.toc_path, author=args.author, title=args.title)
     
     result = luigi.build([task], local_scheduler=True, detailed_summary=True)
     

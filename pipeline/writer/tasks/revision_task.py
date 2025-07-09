@@ -249,6 +249,12 @@ class RevisionTask(BaseWriterTask):
         """Create revision prompt with comprehensive context"""
         prompt_config = self.task_config['prompt']
         
+        # Format system prompt with author and title
+        system_prompt = prompt_config['system'].format(
+            author=self.author,
+            title=self.title
+        )
+        
         user_prompt = prompt_config['user'].format(
             hierarchical_id=chunk.hierarchical_id,
             title=chunk.title,
@@ -256,7 +262,7 @@ class RevisionTask(BaseWriterTask):
             original_content=chunk.content
         )
         
-        return f"{prompt_config['system']}\n\n{user_prompt}"
+        return f"{system_prompt}\n\n{user_prompt}"
     
     def _generate_revised_summary(self, llm_client: LLMClient, chunk: ChunkData, content: str) -> str:
         """Generate summary of revised content"""

@@ -19,9 +19,9 @@ tasks:
     model: "claude-4-sonnet"
     prompt:
       system: |
-        Jesteś współautorem „Meta-Nihilizmu Pragmatycznego III Stopnia”.
+        Jesteś współautorem „{title}" w stylu {author}.
         • Tworzysz _oryginalny_ tekst filozoficzny, nie analizę ani recenzję.
-        • Nigdy nie ujawniasz, że korzystasz ze streszczeń ani innego „kontekstu”.
+        • Nigdy nie ujawniasz, że korzystasz ze streszczeń ani innego „kontekstu".
         • Styl: wykładowo-eseistyczny, polski, ok. 20 % bardziej przystępny od klasycznego traktatu.
         • Unikaj słów: autor, czytelnik, podsumowując, w tym rozdziale, analizuję, recenzja, streszczenie.
       user: |
@@ -43,9 +43,9 @@ tasks:
     batch_size: 5
     content_prompt:
       system: |
-        Jesteś współautorem „Meta-Nihilizmu Pragmatycznego III Stopnia”.
+        Jesteś współautorem „{title}" w stylu {author}.
         • Tworzysz _oryginalny_ tekst filozoficzny, nie analizę ani recenzję.
-        • Nigdy nie ujawniasz, że korzystasz ze streszczeń ani innego „kontekstu”.
+        • Nigdy nie ujawniasz, że korzystasz ze streszczeń ani innego „kontekstu".
         • Styl: wykładowo-eseistyczny, polski, ok. 20 % bardziej przystępny od klasycznego traktatu.
         • Unikaj słów: autor, czytelnik, podsumowując, w tym rozdziale, analizuję, recenzja, streszczenie.
       user: |
@@ -61,10 +61,10 @@ tasks:
           • Treści oznaczonych **AHEAD** używaj wyłącznie do zachowania ciągłości - nie ujawniaj ich ani nie streszczaj.  
           • Nawiąż do `PREVIOUS_PARAGRAPH`, nie powtarzając go literalnie.  
           • Zero odniesień meta-tekstowych; maksymalnie jedno pytanie retoryczne.
-          • Zero wprowadzania w temat; piszesz od środka, czytelnik jest już wprowadzony w temat wcześniej.
+          • Zero wprowadzania w temat; piszesz od środka, czytelnik jest już wprowadzony w temat.
 
         FORMAT WYJŚCIA (nic ponadto):
-        <NUMER> <Nagłówek>
+        {hierarchical_id} <Nagłówek>
         <Akapit treści>
 
     summary_prompt:
@@ -113,9 +113,9 @@ tasks:
     model: "claude-4-sonnet"
     prompt:
       system: |
-        Jesteś współautorem „Meta-Nihilizmu Pragmatycznego III Stopnia”.
+        Jesteś współautorem „{title}" w stylu {author}.
         • Tworzysz _oryginalny_ tekst filozoficzny, nie analizę ani recenzję.
-        • Nigdy nie ujawniasz, że korzystasz ze streszczeń ani innego „kontekstu”.
+        • Nigdy nie ujawniasz, że korzystasz ze streszczeń ani innego „kontekstu".
         • Styl: wykładowo-eseistyczny, polski, ok. 20 % bardziej przystępny od klasycznego traktatu.
         • Unikaj słów: autor, czytelnik, podsumowując, w tym rozdziale, analizuję, recenzja, streszczenie.
       user: |
