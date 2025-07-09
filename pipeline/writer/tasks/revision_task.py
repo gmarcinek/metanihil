@@ -233,36 +233,43 @@ class RevisionTask(BaseWriterTask):
         print(f"🔧 Revising chunk {chunk.hierarchical_id} with hierarchical context")
         return llm_client.chat(prompt)
 
-    def _create_revision_prompt(self, chunk: ChunkData, formatted_context: str) -> str:
+    def _create_revision_prompt(self, chunk: ChunkData, context: str) -> str:
         """Create revision prompt with comprehensive context"""
         prompt_config = self.task_config['prompt']
         
-        # Format system prompt with author and title
-        system_prompt = prompt_config['system'].format(
-            author=self.author,
-            title=self.title
-        )
+        # Format system prompt with parameters
+        system_prompt = self.format_prompt_template(prompt_config['system'])
         
-        user_prompt = prompt_config['user'].format(
+        # Format user prompt with parameters
+        user_prompt = self.format_prompt_template(
+            prompt_config['user'],
             hierarchical_id=chunk.hierarchical_id,
             title=chunk.title,
-            context=formatted_context,
+            context=context,
             original_content=chunk.content
         )
         
+        # Add custom prompt if provided
+        if self.custom_prompt.strip():
+            user_prompt = f"{user_prompt}\n\nDODATKOWE INSTRUKCJE:\n{self.custom_prompt}"
+        
         return f"{system_prompt}\n\n{user_prompt}"
-    
+
     def _generate_revised_summary(self, llm_client: LLMClient, chunk: ChunkData, content: str) -> str:
         """Generate summary of revised content"""
         prompt_config = self.task_config['summary_prompt']
         
-        user_prompt = prompt_config['user'].format(
+        # Format prompts with parameters
+        system_message = self.format_prompt_template(prompt_config['system'])
+        
+        user_prompt = self.format_prompt_template(
+            prompt_config['user'],
             hierarchical_id=chunk.hierarchical_id,
             title=chunk.title,
             content=content
         )
         
-        return llm_client.chat(f"{prompt_config['system']}\n\n{user_prompt}")
+        return llm_client.chat(f"{system_message}\n\n{user_prompt}")
     
     def _save_revision_output(self, chunk: ChunkData, revision_context: dict, 
                             original_content: str, original_summary: str,

@@ -189,7 +189,12 @@ TREŚĆ: {chunk.content or 'Brak treści'}
         """Create quality check prompt with semantic context"""
         prompt_config = self.task_config['prompt']
         
-        user_prompt = prompt_config['user'].format(
+        # Format system prompt with parameters
+        system_message = self.format_prompt_template(prompt_config['system'])
+        
+        # Format user prompt with parameters
+        user_prompt = self.format_prompt_template(
+            prompt_config['user'],
             toc_summary=toc_summary,
             batch_content=batch_content
         )
@@ -197,7 +202,11 @@ TREŚĆ: {chunk.content or 'Brak treści'}
         # Add semantic context
         enhanced_prompt = f"{user_prompt}\n\nKONTEKST SEMANTYCZNY:\n{semantic_context}"
         
-        return f"{prompt_config['system']}\n\n{enhanced_prompt}"
+        # Add custom prompt if provided
+        if self.custom_prompt.strip():
+            enhanced_prompt = f"{enhanced_prompt}\n\nDODATKOWE INSTRUKCJE:\n{self.custom_prompt}"
+        
+        return f"{system_message}\n\n{enhanced_prompt}"
     
     def _parse_quality_issues(self, analysis: str, batch: List[ChunkData]) -> List[dict]:
         """Parse quality issues from LLM analysis"""

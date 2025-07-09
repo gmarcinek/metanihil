@@ -21,6 +21,8 @@ def main():
                        help='Author style to emulate (default: współczesny filozof)')
     parser.add_argument('--title', type=str, default='Meta-Nihilizm Pragmatyczny III Stopnia',
                        help='Title of the work being written (default: Meta-Nihilizm Pragmatyczny III Stopnia)')
+    parser.add_argument('--custom-prompt', type=str, default='',
+                       help='Additional instructions to add to all LLM prompts')
     parser.add_argument('--local-scheduler', action='store_true', default=True, help='Use Luigi local scheduler')
     parser.add_argument('--workers', type=int, default=1, help='Number of worker processes (default: 1)')
     
@@ -36,6 +38,7 @@ def main():
     print(f"   TOC file: {args.toc_path}")
     print(f"   Author: {args.author}")
     print(f"   Title: {args.title}")
+    print(f"   Custom prompt: {args.custom_prompt or 'None'}")
     print(f"   Batch size: {args.batch_size}")
     print(f"   Max iterations: {args.max_iterations}")
     print(f"   Workers: {args.workers}")
@@ -47,7 +50,8 @@ def main():
         batch_size=args.batch_size,
         max_iterations=args.max_iterations,
         author=args.author,
-        title=args.title
+        title=args.title,
+        custom_prompt=args.custom_prompt
     )
     
     # Run pipeline
@@ -68,35 +72,21 @@ def main():
             
     except KeyboardInterrupt:
         print("\n⚠️ Pipeline interrupted by user")
-        _print_resume_instructions(args.toc_path, args.batch_size, args.max_iterations, args.author, args.title)
+        _print_resume_instructions(args.toc_path, args.batch_size, args.max_iterations, args.author, args.title, args.custom_prompt)
         sys.exit(1)
     except Exception as e:
         print(f"\n❌ Pipeline failed with error: {str(e)}")
-        _print_resume_instructions(args.toc_path, args.batch_size, args.max_iterations, args.author, args.title)
+        _print_resume_instructions(args.toc_path, args.batch_size, args.max_iterations, args.author, args.title, args.custom_prompt)
         sys.exit(1)
 
 
-def _print_completion_summary(toc_path: str):
-    """Print completion summary with output locations"""
-    toc_name = Path(toc_path).stem
-    
-    print("📁 Output locations:")
-    print(f"   Main output: output/{toc_name}/")
-    print(f"   TOC summary: output/{toc_name}/toc_short.txt")
-    print(f"   Progress log: output/task_progress.txt")
-    print(f"   Database: output/writer.db")
-    
-    # Check if final QA was run
-    final_qa_path = Path(f"output/{toc_name}/final_qa/final_qa_completed.flag")
-    if final_qa_path.exists():
-        print(f"   Final QA report: output/{toc_name}/final_qa/final_qa_report.txt")
-        print(f"   Change map: output/{toc_name}/final_qa/hierarchical_change_map.txt")
-
-
-def _print_resume_instructions(toc_path: str, batch_size: int, max_iterations: int, author: str, title: str):
+def _print_resume_instructions(toc_path: str, batch_size: int, max_iterations: int, author: str, title: str, custom_prompt: str):
     """Print instructions for resuming pipeline"""
     print("\n🔄 To resume pipeline from where it left off:")
-    print(f"   python -m pipeline.writer.run_pipeline {toc_path} --batch-size {batch_size} --max-iterations {max_iterations} --author \"{author}\" --title \"{title}\"")
+    cmd = f"   python -m pipeline.writer.run_pipeline {toc_path} --batch-size {batch_size} --max-iterations {max_iterations} --author \"{author}\" --title \"{title}\""
+    if custom_prompt:
+        cmd += f" --custom-prompt \"{custom_prompt}\""
+    print(cmd)
     print("\n📊 To check current progress:")
     print("   tail -f output/task_progress.txt")
     print("\n📂 To check outputs so far:")
@@ -116,30 +106,32 @@ def run_single_task():
                        help='Author style to emulate')
     parser.add_argument('--title', type=str, default='Meta-Nihilizm Pragmatyczny III Stopnia',
                        help='Title of the work being written')
+    parser.add_argument('--custom-prompt', type=str, default='',
+                       help='Additional instructions to add to all LLM prompts')
     
     args = parser.parse_args()
     
     if args.task == 'parse':
         from pipeline.writer.tasks.parse_toc_task import ParseTOCTask
-        task = ParseTOCTask(toc_path=args.toc_path, author=args.author, title=args.title)
+        task = ParseTOCTask(toc_path=args.toc_path, author=args.author, title=args.title, custom_prompt=args.custom_prompt)
     elif args.task == 'embed':
         from pipeline.writer.tasks.embed_toc_task import EmbedTOCTask
-        task = EmbedTOCTask(toc_path=args.toc_path, author=args.author, title=args.title)
+        task = EmbedTOCTask(toc_path=args.toc_path, author=args.author, title=args.title, custom_prompt=args.custom_prompt)
     elif args.task == 'summary':
         from pipeline.writer.tasks.create_summary_task import CreateSummaryTask
-        task = CreateSummaryTask(toc_path=args.toc_path, author=args.author, title=args.title)
+        task = CreateSummaryTask(toc_path=args.toc_path, author=args.author, title=args.title, custom_prompt=args.custom_prompt)
     elif args.task == 'process':
         from pipeline.writer.tasks.process_chunks_task import ProcessChunksTask
-        task = ProcessChunksTask(toc_path=args.toc_path, iteration=args.iteration, batch_size=args.batch_size, author=args.author, title=args.title)
+        task = ProcessChunksTask(toc_path=args.toc_path, iteration=args.iteration, batch_size=args.batch_size, author=args.author, title=args.title, custom_prompt=args.custom_prompt)
     elif args.task == 'quality':
         from pipeline.writer.tasks.quality_check_task import QualityCheckTask
-        task = QualityCheckTask(toc_path=args.toc_path, iteration=args.iteration, author=args.author, title=args.title)
+        task = QualityCheckTask(toc_path=args.toc_path, iteration=args.iteration, author=args.author, title=args.title, custom_prompt=args.custom_prompt)
     elif args.task == 'revision':
         from pipeline.writer.tasks.revision_task import RevisionTask
-        task = RevisionTask(toc_path=args.toc_path, iteration=args.iteration, author=args.author, title=args.title)
+        task = RevisionTask(toc_path=args.toc_path, iteration=args.iteration, author=args.author, title=args.title, custom_prompt=args.custom_prompt)
     elif args.task == 'final-qa':
         from pipeline.writer.tasks.final_qa_task import FinalQATask
-        task = FinalQATask(toc_path=args.toc_path, author=args.author, title=args.title)
+        task = FinalQATask(toc_path=args.toc_path, author=args.author, title=args.title, custom_prompt=args.custom_prompt)
     
     result = luigi.build([task], local_scheduler=True, detailed_summary=True)
     
@@ -148,6 +140,21 @@ def run_single_task():
     else:
         print(f"❌ Task {args.task} failed!")
 
+def _print_completion_summary(toc_path: str):
+    """Print completion summary with output locations"""
+    toc_name = Path(toc_path).stem
+    
+    print("📁 Output locations:")
+    print(f"   Main output: output/{toc_name}/")
+    print(f"   TOC summary: output/{toc_name}/toc_short.txt")
+    print(f"   Progress log: output/task_progress.txt")
+    print(f"   Writer storage: output/writer_storage/")
+    
+    # Check if final QA was run
+    final_qa_path = Path(f"output/{toc_name}/final_qa/final_qa_completed.flag")
+    if final_qa_path.exists():
+        print(f"   Final QA report: output/{toc_name}/final_qa/final_qa_report.txt")
+        print(f"   Change map: output/{toc_name}/final_qa/hierarchical_change_map.txt")
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == 'single':

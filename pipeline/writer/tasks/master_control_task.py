@@ -102,11 +102,26 @@ class MasterControlTask(BaseWriterTask):
         
         print("🔍 Ensuring TOC is parsed and embedded...")
         
-        # Run initial setup tasks
+        # Run initial setup tasks with CLI parameters
         luigi.build([
-            ParseTOCTask(toc_path=self.toc_path),
-            EmbedTOCTask(toc_path=self.toc_path),
-            CreateSummaryTask(toc_path=self.toc_path)
+            ParseTOCTask(
+                toc_path=self.toc_path,
+                author=self.author,
+                title=self.title,
+                custom_prompt=self.custom_prompt
+            ),
+            EmbedTOCTask(
+                toc_path=self.toc_path,
+                author=self.author,
+                title=self.title,
+                custom_prompt=self.custom_prompt
+            ),
+            CreateSummaryTask(
+                toc_path=self.toc_path,
+                author=self.author,
+                title=self.title,
+                custom_prompt=self.custom_prompt
+            )
         ], local_scheduler=True)
         
         print("✅ TOC setup completed")
@@ -161,16 +176,22 @@ class MasterControlTask(BaseWriterTask):
         from .process_chunks_task import ProcessChunksTask
         from .quality_check_task import QualityCheckTask
         
-        # Create dynamic task instances for this iteration
+        # Create dynamic task instances for this iteration with CLI parameters
         process_task = ProcessChunksTask(
             toc_path=self.toc_path,
             batch_size=self.batch_size,
-            iteration=self.iteration
+            iteration=self.iteration,
+            author=self.author,
+            title=self.title,
+            custom_prompt=self.custom_prompt
         )
         
         quality_task = QualityCheckTask(
             toc_path=self.toc_path,
-            iteration=self.iteration
+            iteration=self.iteration,
+            author=self.author,
+            title=self.title,
+            custom_prompt=self.custom_prompt
         )
         
         # Run processing and quality check
@@ -185,7 +206,10 @@ class MasterControlTask(BaseWriterTask):
         
         revision_task = RevisionTask(
             toc_path=self.toc_path,
-            iteration=self.iteration
+            iteration=self.iteration,
+            author=self.author,
+            title=self.title,
+            custom_prompt=self.custom_prompt
         )
         
         result = luigi.build([revision_task], local_scheduler=True)
@@ -199,7 +223,12 @@ class MasterControlTask(BaseWriterTask):
         
         print("🎯 Running final QA analysis...")
         
-        final_qa_task = FinalQATask(toc_path=self.toc_path)
+        final_qa_task = FinalQATask(
+            toc_path=self.toc_path,
+            author=self.author,
+            title=self.title,
+            custom_prompt=self.custom_prompt
+        )
         
         result = luigi.build([final_qa_task], local_scheduler=True)
         

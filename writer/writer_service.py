@@ -436,6 +436,48 @@ class WriterService:
         if len(parts) <= 1:
             return None
         return '.'.join(parts[:-1])
+    def get_processing_context(self, chunk: ChunkData, all_chunks: List[ChunkData] = None) -> Dict[str, Any]:
+        """Get context for LLM processing of chunk"""
+        if all_chunks is None:
+            all_chunks = list(self.chunks.values())
+        
+        all_chunks.sort(key=lambda x: x.hierarchical_id)
+        
+        # Find chunk position
+        chunk_index = None
+        for i, c in enumerate(all_chunks):
+            if c.hierarchical_id == chunk.hierarchical_id:
+                chunk_index = i
+                break
+        
+        if chunk_index is None:
+            return {'error': 'Chunk not found in sequence'}
+        
+        # Get context
+        previous_chunk = all_chunks[chunk_index - 1] if chunk_index > 0 else None
+        next_chunk = all_chunks[chunk_index + 1] if chunk_index < len(all_chunks) - 1 else None
+        
+        # Get 5 previous and next summaries
+        start_prev = max(0, chunk_index - 5)
+        end_next = min(len(all_chunks), chunk_index + 6)
+        
+        previous_summaries = [c.summary for c in all_chunks[start_prev:chunk_index] if c.summary]
+        next_titles = [f"{c.hierarchical_id}: {c.title}" for c in all_chunks[chunk_index + 1:end_next]]
+        
+        # Get 5 previous and 5 next chunks for context
+        previous_5_chunks = all_chunks[start_prev:chunk_index]
+        next_5_chunks = all_chunks[chunk_index + 1:end_next]
+        
+        return {
+            'chunk': chunk,
+            'previous_chunk': previous_chunk,
+            'next_chunk': next_chunk,
+            'previous_summaries': previous_summaries,
+            'next_titles': next_titles,
+            'position': f"{chunk_index + 1}/{len(all_chunks)}",
+            'previous_5_chunks': previous_5_chunks,
+            'next_5_chunks': next_5_chunks
+        }
     
     def close(self):
         """Clean shutdown of service"""

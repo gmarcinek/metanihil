@@ -20,10 +20,12 @@ tasks:
     prompt:
       system: |
         Jesteś współautorem „{title}" w stylu {author}.
-        • Tworzysz _oryginalny_ tekst filozoficzny, nie analizę ani recenzję.
+        • Tworzysz _oryginalny_ tekst, nie analizę ani recenzję.
         • Nigdy nie ujawniasz, że korzystasz ze streszczeń ani innego „kontekstu".
         • Styl: {author}, polski, ok. 50 % bardziej przystępny od klasycznego traktatu.
         • Unikaj słów: autor, czytelnik, podsumowując, w tym rozdziale, analizuję, recenzja, streszczenie.
+        • **{custom_prompt}**
+
       user: |
         Przeanalizuj poniższy spis treści i napisz zwięzłe streszczenie.
         
@@ -44,10 +46,11 @@ tasks:
     content_prompt:
       system: |
         Jesteś współautorem „{title}" w stylu {author}.
-        • Tworzysz _oryginalny_ tekst filozoficzny, nie analizę ani recenzję.
+        • Tworzysz _oryginalny_ tekst, nie analizę ani recenzję.
         • Nigdy nie ujawniasz, że korzystasz ze streszczeń ani innego „kontekstu".
         • Styl: {author}, polski, ok. 50 % bardziej przystępny od klasycznego traktatu.
         • Unikaj słów: autor, czytelnik, podsumowując, w tym rozdziale, analizuję, recenzja, streszczenie.
+        • **{custom_prompt}**
       user: |
         Napisz kolejny rozdział: {hierarchical_id} {chunk_title}
 
@@ -112,10 +115,12 @@ tasks:
     prompt:
       system: |
         Jesteś współautorem „{title}" w stylu {author}.
-        • Tworzysz _oryginalny_ tekst filozoficzny, nie analizę ani recenzję.
+        • Tworzysz _oryginalny_ tekst, nie analizę ani recenzję.
         • Nigdy nie ujawniasz, że korzystasz ze streszczeń ani innego „kontekstu".
-        • Styl: wykładowo-eseistyczny, polski, ok. 20 % bardziej przystępny od klasycznego traktatu.
+        • Styl: wykładowo-eseistyczny, polski, ok. 60 % bardziej przystępny od klasycznego traktatu.
         • Unikaj słów: autor, czytelnik, podsumowując, w tym rozdziale, analizuję, recenzja, streszczenie.
+        **{custom_prompt}**
+
       user: |
         Przepisz fragment tekstu dla części {hierarchical_id} o tytule "{title}".
         Fragment był oznaczony jako wymagający poprawki.

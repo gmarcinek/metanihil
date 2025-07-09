@@ -43,39 +43,59 @@ class FinalQATask(BaseWriterTask):
             writer_service = WriterService(storage_dir="output/writer_storage")
             llm_client = LLMClient(model=self.task_config['model'])
             
-            # Get ALL completed chunks
-            all_chunks = writer_service.get_chunks_by_status(ChunkStatus.COMPLETED)
-            all_chunks.sort(key=lambda x: x.hierarchical_id)
+            # Get ALL chunks with content (regardless of status)
+            all_chunks = list(writer_service.chunks.values())
+            chunks_with_content = [chunk for chunk in all_chunks if chunk.content and chunk.content.strip()]
             
-            if not all_chunks:
-                raise ValueError("No completed chunks found for final QA")
+            print(f"🔍 DEBUG: Total chunks: {len(all_chunks)}")
+            print(f"🔍 DEBUG: Chunks with content: {len(chunks_with_content)}")
+            
+            # Debug: show chunk statuses
+            status_counts = {}
+            for chunk in all_chunks:
+                status = chunk.status.value
+                status_counts[status] = status_counts.get(status, 0) + 1
+            print(f"🔍 DEBUG: Status distribution: {status_counts}")
+            
+            if not chunks_with_content:
+                print("❌ No chunks with content found for final QA")
+                print("ℹ️ This usually means ProcessChunksTask hasn't run yet or failed")
+                
+                # Create a report about the current state
+                with open(self.output().path, 'w', encoding='utf-8') as f:
+                    f.write(f"No chunks with content found. Total chunks: {len(all_chunks)}, Status counts: {status_counts}")
+                
+                self._persist_task_progress("GLOBAL", "FinalQATask", "SKIPPED")
+                return
+            
+            chunks_with_content.sort(key=lambda x: x.hierarchical_id)
             
             # Load TOC summary
             toc_summary = self._load_toc_summary()
             
             # Prepare document segments for analysis (avoid token limits)
-            document_segments = self._prepare_document_segments(all_chunks)
+            document_segments = self._prepare_document_segments(chunks_with_content)
             
             # Run comprehensive QA analysis
             qa_results = self._run_comprehensive_qa_analysis(
-                llm_client, writer_service, document_segments, toc_summary, all_chunks
+                llm_client, writer_service, document_segments, toc_summary, chunks_with_content
             )
             
             # Parse and categorize issues
-            all_issues = self._parse_and_categorize_issues(qa_results, all_chunks)
+            all_issues = self._parse_and_categorize_issues(qa_results, chunks_with_content)
             
             # Run semantic consistency analysis
-            semantic_issues = self._analyze_semantic_consistency(writer_service, all_chunks)
+            semantic_issues = self._analyze_semantic_consistency(writer_service, chunks_with_content)
             all_issues.extend(semantic_issues)
             
             # Create comprehensive reports
-            self._create_final_qa_report(all_chunks, qa_results, all_issues)
+            self._create_final_qa_report(chunks_with_content, qa_results, all_issues)
             self._create_hierarchical_change_map(all_issues)
-            self._create_semantic_analysis_report(writer_service, all_chunks)
+            self._create_semantic_analysis_report(writer_service, chunks_with_content)
             
             # Create completion flag
             with open(self.output().path, 'w', encoding='utf-8') as f:
-                f.write(f"Final QA completed for {len(all_chunks)} chunks. Found {len(all_issues)} issues.")
+                f.write(f"Final QA completed for {len(chunks_with_content)} chunks. Found {len(all_issues)} issues.")
             
             # Persist task completion
             self._persist_task_progress("GLOBAL", "FinalQATask", "COMPLETED")
@@ -138,11 +158,16 @@ class FinalQATask(BaseWriterTask):
         return qa_results
     
     def _create_final_qa_prompt(self, segment_content: str, toc_summary: str, 
-                              total_chunks: int, segment_num: int, total_segments: int) -> str:
+                          total_chunks: int, segment_num: int, total_segments: int) -> str:
         """Create final QA prompt for document segment"""
         prompt_config = self.task_config['prompt']
         
-        user_prompt = prompt_config['user'].format(
+        # Format system prompt with parameters
+        system_message = self.format_prompt_template(prompt_config['system'])
+        
+        # Format user prompt with parameters
+        user_prompt = self.format_prompt_template(
+            prompt_config['user'],
             toc_summary=toc_summary,
             chunk_count=total_chunks,
             full_document=segment_content
@@ -152,7 +177,11 @@ class FinalQATask(BaseWriterTask):
         segment_context = f"\n\nSEGMENT KONTEKST: Analizujesz segment {segment_num}/{total_segments} dokumentu."
         enhanced_prompt = user_prompt + segment_context
         
-        return f"{prompt_config['system']}\n\n{enhanced_prompt}"
+        # Add custom prompt if provided
+        if self.custom_prompt.strip():
+            enhanced_prompt = f"{enhanced_prompt}\n\nDODATKOWE INSTRUKCJE:\n{self.custom_prompt}"
+        
+        return f"{system_message}\n\n{enhanced_prompt}"
     
     def _analyze_semantic_consistency(self, writer_service: WriterService, all_chunks: List[ChunkData]) -> List[dict]:
         """Analyze semantic consistency using WriterService search capabilities"""

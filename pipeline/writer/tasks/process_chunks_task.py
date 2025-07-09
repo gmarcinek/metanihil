@@ -22,7 +22,7 @@ class ProcessChunksTask(BaseWriterTask):
     
     @property 
     def task_name(self) -> str:
-        return "proces_chunks"
+        return "process_chunks"
     
     def requires(self):
         from .create_summary_task import CreateSummaryTask
@@ -99,12 +99,17 @@ class ProcessChunksTask(BaseWriterTask):
         # Build prompt
         prompt_config = self.task_config['content_prompt']
         
-        system_prompt = prompt_config['system'].format(author=self.author, title=self.title)
-        user_prompt = prompt_config['user'].format(
+        system_prompt = self.format_prompt_template(prompt_config['system'])
+        user_prompt = self.format_prompt_template(
+            prompt_config['user'],
             hierarchical_id=chunk.hierarchical_id,
             chunk_title=chunk.title,
             hierarchical_context=formatted_context
         )
+        
+        # Add custom prompt if provided
+        if self.custom_prompt.strip():
+            user_prompt = f"{user_prompt}\n\nDODATKOWE INSTRUKCJE:\n{self.custom_prompt}"
         
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
         return llm_client.chat(full_prompt)
@@ -113,14 +118,15 @@ class ProcessChunksTask(BaseWriterTask):
         """Generate summary of chunk content"""
         prompt_config = self.task_config['summary_prompt']
         
-        user_prompt = prompt_config['user'].format(
+        system_message = self.format_prompt_template(prompt_config['system'])
+        user_prompt = self.format_prompt_template(
+            prompt_config['user'],
             hierarchical_id=chunk.hierarchical_id,
             title=chunk.title,
             content=content
         )
         
-        full_prompt = f"{prompt_config['system']}\n\n{user_prompt}"
-        return llm_client.chat(full_prompt)
+        return llm_client.chat(f"{system_message}\n\n{user_prompt}")
     
     def _save_chunk_output(self, chunk: ChunkData, content: str, summary: str):
         """Save individual chunk output to file"""

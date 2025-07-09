@@ -105,12 +105,24 @@ class CreateSummaryTask(BaseWriterTask):
         return "\n".join(lines)
     
     def _create_summary_prompt(self, toc_content: str) -> str:
-        """Create prompt for TOC summarization from config"""
+        """Create prompt for TOC summarization from config with proper formatting"""
         prompt_config = self.task_config['prompt']
         
-        # Build full prompt with system + user messages
-        system_message = prompt_config['system']
-        user_prompt = prompt_config['user'].format(toc_content=toc_content)
+        # Format system prompt with parameters
+        system_message = self.format_prompt_template(
+            prompt_config['system'],
+            toc_content=toc_content
+        )
+        
+        # Format user prompt with parameters  
+        user_prompt = self.format_prompt_template(
+            prompt_config['user'],
+            toc_content=toc_content
+        )
+        
+        # Add custom prompt if provided
+        if self.custom_prompt.strip():
+            user_prompt = f"{user_prompt}\n\nDODATKOWE INSTRUKCJE:\n{self.custom_prompt}"
         
         return f"{system_message}\n\n{user_prompt}"
     
