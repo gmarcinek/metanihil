@@ -483,11 +483,9 @@ class WriterService:
                             for item in context['immediate_context']]
             parts.append(f"BEZPOŚREDNI KONTEKST:\n" + "\n".join(immediate_items))
         
-        # 6. Recent full texts - complete content of most recent chunks
+        # 6. Recent full texts - complete content only (content already contains headers)
         if context['recent_full_texts']:
-            full_text_items = []
-            for item in context['recent_full_texts']:
-                full_text_items.append(f"{item['hierarchical_id']} {item['title']}\n{item['content']}")
+            full_text_items = [item['content'] for item in context['recent_full_texts']]
             parts.append(f"NAJŚWIEŻSZY KONTEKST:\n" + "\n\n".join(full_text_items))
         
         # 7. Current target
