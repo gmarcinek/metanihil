@@ -16,11 +16,16 @@ tasks:
     model: "text-embedding-3-small"
   
   CreateSummaryTask:
-    model: "gpt-4o"
+    model: "claude-4-sonnet"
     prompt:
-      system: "Jesteś ekspertem od analizy i streszczania tekstów różnych gatunków."
+      system: |
+        Jesteś współautorem „Meta-Nihilizmu Pragmatycznego III Stopnia”.
+        • Tworzysz _oryginalny_ tekst filozoficzny, nie analizę ani recenzję.
+        • Nigdy nie ujawniasz, że korzystasz ze streszczeń ani innego „kontekstu”.
+        • Styl: wykładowo-eseistyczny, polski, ok. 20 % bardziej przystępny od klasycznego traktatu.
+        • Unikaj słów: autor, czytelnik, podsumowując, w tym rozdziale, analizuję, recenzja, streszczenie.
       user: |
-        Przeanalizuj poniższy spis treści i napisz zwięzłe streszczenie całego dzieła.
+        Przeanalizuj poniższy spis treści i napisz zwięzłe streszczenie.
         
         Określ gatunek i styl na podstawie struktury i tytułów, a następnie napisz streszczenie:
         - Opisujące główne tematy i strukturę
@@ -34,7 +39,7 @@ tasks:
         Streszczenie:
 
   ProcessChunksTask:
-    model: "gpt-4o"
+    model: "claude-4-sonnet"
     batch_size: 5
     content_prompt:
       system: |
@@ -50,13 +55,13 @@ tasks:
         {context}
 
         Instrukcje:
-        1. Ustal poprawny kolejny numer punktu (np. 2.4.6 → 2.4.7).
-        2. Dodaj jednowierszowy **nagłówek**.
-        3. Napisz **jeden akapit** (120-200 słów).
+        1. Dodaj jednowierszowy **nagłówek**.
+        2. Napisz **jeden akapit** (120-300 słów).
           • Korzystaj z co najmniej dwóch streszczeń z sekcji **PAST** (wątków), ale nie cytuj ich.  
           • Treści oznaczonych **AHEAD** używaj wyłącznie do zachowania ciągłości - nie ujawniaj ich ani nie streszczaj.  
           • Nawiąż do `PREVIOUS_PARAGRAPH`, nie powtarzając go literalnie.  
           • Zero odniesień meta-tekstowych; maksymalnie jedno pytanie retoryczne.
+          • Zero wprowadzania w temat; piszesz od środka, czytelnik jest już wprowadzony w temat wcześniej.
 
         FORMAT WYJŚCIA (nic ponadto):
         <NUMER> <Nagłówek>
@@ -76,7 +81,7 @@ tasks:
         Streszczenie (2-3 zdania):
 
   QualityCheckTask:
-    model: "gpt-4o-mini"
+    model: "claude-3.5-haiku"
     batch_size: 5
     prompt:
       system: "Jesteś ekspertem redaktorem tekstów różnych gatunków. Oceniasz spójność i jakość niezależnie od stylu."
@@ -105,9 +110,14 @@ tasks:
         Analiza:
 
   RevisionTask:
-    model: "gpt-4o"
+    model: "claude-4-sonnet"
     prompt:
-      system: "Jesteś ekspertem pisarzem przepisującym teksty różnych gatunków. Zachowujesz gatunek i styl oryginalnego tekstu."
+      system: |
+        Jesteś współautorem „Meta-Nihilizmu Pragmatycznego III Stopnia”.
+        • Tworzysz _oryginalny_ tekst filozoficzny, nie analizę ani recenzję.
+        • Nigdy nie ujawniasz, że korzystasz ze streszczeń ani innego „kontekstu”.
+        • Styl: wykładowo-eseistyczny, polski, ok. 20 % bardziej przystępny od klasycznego traktatu.
+        • Unikaj słów: autor, czytelnik, podsumowując, w tym rozdziale, analizuję, recenzja, streszczenie.
       user: |
         Przepisz fragment tekstu dla części {hierarchical_id} o tytule "{title}".
         Fragment był oznaczony jako wymagający poprawki.
