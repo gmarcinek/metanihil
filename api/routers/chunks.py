@@ -247,10 +247,9 @@ async def delete_chunk(chunk_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete chunk: {str(e)}")
 
-
-@router.get("/{chunk_id}/context", response_model=ProcessingContextResponse)
+@router.get("/{chunk_id}/context")
 async def get_chunk_context(chunk_id: str):
-    """Get processing context for chunk (previous/next chunks)"""
+    """Get hierarchical context for chunk"""
     try:
         service = get_writer_service()
         chunk = service.get_chunk_by_id(chunk_id)
@@ -258,25 +257,35 @@ async def get_chunk_context(chunk_id: str):
         if not chunk:
             raise HTTPException(status_code=404, detail=f"Chunk {chunk_id} not found")
         
-        context = service.get_processing_context(chunk)
+        # Get hierarchical context
+        hierarchical_context = service.get_hierarchical_context(chunk)
         
-        if 'error' in context:
-            raise HTTPException(status_code=500, detail=context['error'])
+        if 'error' in hierarchical_context:
+            raise HTTPException(status_code=500, detail=hierarchical_context['error'])
         
-        return ProcessingContextResponse(
-            chunk=_chunk_to_response(context['chunk']),
-            previous_chunk=_chunk_to_response(context['previous_chunk']) if context.get('previous_chunk') else None,
-            next_chunk=_chunk_to_response(context['next_chunk']) if context.get('next_chunk') else None,
-            previous_summaries=context.get('previous_summaries', []),
-            next_titles=context.get('next_titles', []),
-            position=context.get('position', 'unknown')
-        )
+        # Format for LLM
+        formatted_context = service.format_hierarchical_context_for_llm(hierarchical_context)
+        
+        return {
+            "chunk_id": chunk_id,
+            "hierarchical_id": chunk.hierarchical_id,
+            "title": chunk.title,
+            "formatted_context": formatted_context,
+            "context_structure": {
+                "global_summary": hierarchical_context.get('global_summary'),
+                "previous_groups_count": len(hierarchical_context.get('previous_groups', [])),
+                "local_group_summary": hierarchical_context.get('local_group_summary'),
+                "local_history_count": len(hierarchical_context.get('local_history', [])),
+                "immediate_context_count": len(hierarchical_context.get('immediate_context', [])),
+                "recent_full_texts_count": len(hierarchical_context.get('recent_full_texts', [])),
+                "upcoming_titles_count": len(hierarchical_context.get('upcoming_titles', []))
+            }
+        }
         
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get chunk context: {str(e)}")
-
 
 @router.get("/{chunk_id}/neighbors")
 async def get_chunk_neighbors(chunk_id: str, max_neighbors: int = Query(5, ge=1, le=20)):

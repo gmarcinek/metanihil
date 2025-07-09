@@ -10,6 +10,16 @@ from .models import ChunkData, ChunkStatus, SearchResult, ProcessingStats, TOCEn
 from .persistence import ChunkPersistence
 from .faiss_manager import FAISSManager
 from .embedder import ChunkEmbedder
+from .hierarchical_utils import (
+    sort_chunks_numerically, 
+    get_level1_group,
+    chunks_in_group,
+    find_chunk_index,
+    get_main_group_chunk,
+    format_chunk_reference,
+    get_previous_groups,
+    slice_chunks_safely
+)
 
 
 class WriterService:
@@ -44,6 +54,111 @@ class WriterService:
             self.faiss_manager.cleanup_orphaned_embeddings(chunks_in_storage)
         
         print(f"🔄 Embedding sync: {len(chunks_with_faiss)} in FAISS, {len(chunks_in_storage)} in storage")
+    
+    # ==================== HIERARCHICAL CONTEXT ====================
+    
+    def get_hierarchical_context(self, chunk: ChunkData) -> Dict[str, Any]:
+        """Get hierarchical adaptive context for LLM processing"""
+        all_chunks = sort_chunks_numerically(list(self.chunks.values()))
+        current_index = find_chunk_index(all_chunks, chunk)
+        
+        if current_index is None:
+            return {'error': 'Chunk not found in sequence'}
+        
+        current_group = get_level1_group(chunk.hierarchical_id)
+        
+        # Build adaptive context structure
+        context = {
+            'global_summary': self._get_global_toc_summary(),
+            'previous_groups': self._get_previous_groups_summaries(current_group, all_chunks),
+            'local_group_summary': self._get_local_group_summary(current_group, all_chunks),
+            'local_history': self._get_local_history(current_group, current_index, all_chunks),
+            'immediate_context': self._get_immediate_context(current_index, all_chunks),
+            'recent_full_texts': self._get_recent_full_texts(current_index, all_chunks),
+            'current_chunk': {
+                'hierarchical_id': chunk.hierarchical_id,
+                'title': chunk.title,
+                'level': chunk.level
+            },
+            'upcoming_titles': self._get_upcoming_titles(current_index, all_chunks)
+        }
+        
+        return context
+    
+    def _get_global_toc_summary(self) -> str:
+        """Get global TOC summary"""
+        # Try to load from toc_short.txt - fallback to default
+        try:
+            toc_short_path = self.storage_dir.parent / "toc_short.txt"
+            if toc_short_path.exists():
+                with open(toc_short_path, 'r', encoding='utf-8') as f:
+                    return f.read().strip()
+        except Exception:
+            pass
+        
+        return "Meta-nihilizm jako analiza poznania uwięzionego we własnych strukturach"
+    
+    def _get_previous_groups_summaries(self, current_group: str, all_chunks: List[ChunkData]) -> List[Dict]:
+        """Get short summaries of all previous level-1 groups"""
+        previous_groups = []
+        
+        for group_id in get_previous_groups(current_group):
+            main_chunk = get_main_group_chunk(all_chunks, group_id)
+            
+            if main_chunk and main_chunk.summary:
+                previous_groups.append({
+                    'group_id': group_id,
+                    'title': main_chunk.title,
+                    'summary': main_chunk.summary
+                })
+        
+        return previous_groups
+    
+    def _get_local_group_summary(self, current_group: str, all_chunks: List[ChunkData]) -> Optional[str]:
+        """Get summary of current level-1 group"""
+        main_chunk = get_main_group_chunk(all_chunks, current_group)
+        return main_chunk.summary if main_chunk else None
+    
+    def _get_local_history(self, current_group: str, current_index: int, 
+                          all_chunks: List[ChunkData]) -> List[Dict]:
+        """Get short summaries of ALL previous chunks in current group"""
+        history = []
+        
+        for i in range(current_index):
+            chunk = all_chunks[i]
+            if get_level1_group(chunk.hierarchical_id) == current_group:
+                history.append({
+                    'hierarchical_id': chunk.hierarchical_id,
+                    'title': chunk.title,
+                    'summary': chunk.summary or "[Streszczenie w przygotowaniu]"
+                })
+        
+        return history
+    
+    def _get_immediate_context(self, current_index: int, all_chunks: List[ChunkData]) -> List[Dict]:
+        """Get long summaries of chunks before recent_full_texts (offset -4 to -2)"""
+        context_chunks = slice_chunks_safely(all_chunks, current_index - 4, current_index - 2)
+        
+        return [{
+            'hierarchical_id': chunk.hierarchical_id,
+            'title': chunk.title,
+            'summary': chunk.summary or "[Długie streszczenie w przygotowaniu]"
+        } for chunk in context_chunks]
+    
+    def _get_recent_full_texts(self, current_index: int, all_chunks: List[ChunkData]) -> List[Dict]:
+        """Get full content of most recent chunks (offset -2 to current)"""
+        recent_chunks = slice_chunks_safely(all_chunks, current_index - 2, current_index)
+        
+        return [{
+            'hierarchical_id': chunk.hierarchical_id,
+            'title': chunk.title,
+            'content': chunk.content or "[Treść w przygotowaniu]"
+        } for chunk in recent_chunks]
+    
+    def _get_upcoming_titles(self, current_index: int, all_chunks: List[ChunkData]) -> List[str]:
+        """Get list of upcoming chapter titles"""
+        upcoming_chunks = slice_chunks_safely(all_chunks, current_index + 1, current_index + 6)
+        return [format_chunk_reference(chunk) for chunk in upcoming_chunks]
     
     # ==================== TOC OPERATIONS ====================
     
@@ -134,7 +249,7 @@ class WriterService:
     def get_chunks_batch(self, status: ChunkStatus, limit: int) -> List[ChunkData]:
         """Get limited batch of chunks by status"""
         matching_chunks = self.get_chunks_by_status(status)
-        matching_chunks.sort(key=lambda x: x.hierarchical_id)
+        matching_chunks = sort_chunks_numerically(matching_chunks)
         return matching_chunks[:limit]
     
     def get_chunk_by_id(self, chunk_id: str) -> Optional[ChunkData]:
@@ -274,51 +389,6 @@ class WriterService:
             query, list(self.chunks.values()), max_chunks, threshold
         )
     
-    # ==================== PROCESSING OPERATIONS ====================
-    
-    def get_processing_context(self, chunk: ChunkData, all_chunks: List[ChunkData] = None) -> Dict[str, Any]:
-        """Get context for LLM processing of chunk"""
-        if all_chunks is None:
-            all_chunks = list(self.chunks.values())
-        
-        all_chunks.sort(key=lambda x: x.hierarchical_id)
-        
-        # Find chunk position
-        chunk_index = None
-        for i, c in enumerate(all_chunks):
-            if c.hierarchical_id == chunk.hierarchical_id:
-                chunk_index = i
-                break
-        
-        if chunk_index is None:
-            return {'error': 'Chunk not found in sequence'}
-        
-        # Get context
-        previous_chunk = all_chunks[chunk_index - 1] if chunk_index > 0 else None
-        next_chunk = all_chunks[chunk_index + 1] if chunk_index < len(all_chunks) - 1 else None
-        
-        # Get 5 previous and next summaries
-        start_prev = max(0, chunk_index - 5)
-        end_next = min(len(all_chunks), chunk_index + 6)
-        
-        previous_summaries = [c.summary for c in all_chunks[start_prev:chunk_index] if c.summary]
-        next_titles = [f"{c.hierarchical_id}: {c.title}" for c in all_chunks[chunk_index + 1:end_next]]
-        
-        # Get 5 previous and 5 next chunks for context
-        previous_5_chunks = all_chunks[start_prev:chunk_index]
-        next_5_chunks = all_chunks[chunk_index + 1:end_next]
-        
-        return {
-            'chunk': chunk,
-            'previous_chunk': previous_chunk,
-            'next_chunk': next_chunk,
-            'previous_summaries': previous_summaries,
-            'next_titles': next_titles,
-            'position': f"{chunk_index + 1}/{len(all_chunks)}",
-            'previous_5_chunks': previous_5_chunks,  # ← 5 poprzednich
-            'next_5_chunks': next_5_chunks          # ← 5 następnych
-        }
-    
     # ==================== STATISTICS & MANAGEMENT ====================
     
     def get_statistics(self) -> Dict[str, Any]:
@@ -371,3 +441,61 @@ class WriterService:
         """Clean shutdown of service"""
         self.faiss_manager.save_index()
         print("📚 WriterService closed")
+    
+    def format_hierarchical_context_for_llm(self, context: Dict[str, Any]) -> str:
+        """Format hierarchical context into natural prompt flow"""
+        parts = []
+        
+        # 1. Global summary
+        parts.append(f"SCENARIUSZ CAŁOŚCI:\n{context['global_summary']}")
+        
+        # 2. Previous groups (if any) - only short summaries
+        if context['previous_groups']:
+            group_summaries = [f"• {g['group_id']} {g['title']}" 
+                            for g in context['previous_groups']]
+            parts.append(f"POPRZEDNIE GRUPY:\n" + "\n".join(group_summaries))
+        
+        # 3. Local group summary (if exists) - only if different from current chunk
+        current_chunk_id = context['current_chunk']['hierarchical_id']
+        current_group = get_level1_group(current_chunk_id)
+        
+        if context['local_group_summary'] and current_chunk_id != current_group:
+            parts.append(f"GRUPA {current_group}:\n{context['local_group_summary']}")
+        
+        # 4. Local history - only titles, exclude all recent context chunks
+        recent_full_ids = {item['hierarchical_id'] for item in context.get('recent_full_texts', [])}
+        immediate_ids = {item['hierarchical_id'] for item in context.get('immediate_context', [])}
+        all_recent_ids = recent_full_ids | immediate_ids
+        
+        if context['local_history']:
+            # Filter out chunks that will appear in later sections
+            filtered_history = [h for h in context['local_history'] 
+                            if h['hierarchical_id'] not in all_recent_ids]
+            
+            if filtered_history:
+                history_items = [f"• {h['hierarchical_id']} {h['title']}" 
+                                for h in filtered_history]
+                parts.append(f"HISTORIA LOKALNA:\n" + "\n".join(history_items))
+        
+        # 5. Immediate context - long summaries of chunks before recent_full_texts
+        if context['immediate_context']:
+            immediate_items = [f"• {item['hierarchical_id']} {item['title']}: {item['summary']}" 
+                            for item in context['immediate_context']]
+            parts.append(f"BEZPOŚREDNI KONTEKST:\n" + "\n".join(immediate_items))
+        
+        # 6. Recent full texts - complete content of most recent chunks
+        if context['recent_full_texts']:
+            full_text_items = []
+            for item in context['recent_full_texts']:
+                full_text_items.append(f"{item['hierarchical_id']} {item['title']}\n{item['content']}")
+            parts.append(f"NAJŚWIEŻSZY KONTEKST:\n" + "\n\n".join(full_text_items))
+        
+        # 7. Current target
+        current = context['current_chunk']
+        parts.append(f">>> PISZ TERAZ: {current['hierarchical_id']} {current['title']}")
+        
+        # 8. Upcoming titles (if any)
+        if context['upcoming_titles']:
+            parts.append(f"KOLEJNE ROZDZIAŁY:\n" + "\n".join([f"• {title}" for title in context['upcoming_titles']]))
+        
+        return "\n\n".join(parts)

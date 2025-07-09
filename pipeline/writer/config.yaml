@@ -51,14 +51,7 @@ tasks:
       user: |
         Napisz kolejny rozdział: {hierarchical_id} {chunk_title}
 
-        STRESZCZENIE CAŁOŚCI:
-        {toc_summary}
-
-        POPRZEDNIE ROZDZIAŁY (5 ostatnich):
-        {previous_content}
-
-        NADCHODZĄCE ROZDZIAŁY (streszczenia):
-        {upcoming_summaries}
+        {hierarchical_context}
 
         Instrukcje:
         1. Napisz pełny rozdział dla {hierarchical_id} {chunk_title}

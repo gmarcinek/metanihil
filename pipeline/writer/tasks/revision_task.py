@@ -4,6 +4,7 @@ from typing import List, Optional
 
 
 from pipeline.writer.tasks.base_writer_task import BaseWriterTask
+from writer import writer_service
 from writer.writer_service import WriterService
 from writer.models import ChunkStatus, ChunkData
 from pipeline.writer.config_loader import ConfigLoader
@@ -165,15 +166,20 @@ class RevisionTask(BaseWriterTask):
         return chunks_to_revise
     
     def _get_revision_context(self, writer_service: WriterService, target_chunk: ChunkData, toc_summary: str) -> dict:
-        """Get comprehensive context for revision using WriterService capabilities"""
-        # Get basic processing context (previous/next chunks)
-        basic_context = writer_service.get_processing_context(target_chunk)
+        """Get comprehensive context for revision using hierarchical context"""
+        # Get hierarchical context
+        hierarchical_context = writer_service.get_hierarchical_context(target_chunk)
+        if 'error' in hierarchical_context:
+            raise ValueError(hierarchical_context['error'])
+        
+        # Format hierarchical context for LLM
+        formatted_hierarchical = writer_service.format_hierarchical_context_for_llm(hierarchical_context)
         
         # Get semantic context - similar chunks for reference
         semantic_context = []
         if target_chunk.content:
             similar_results = writer_service.search_chunks_semantic(
-                query=target_chunk.content[:300],  # First 300 chars
+                query=target_chunk.content[:300],
                 max_results=5,
                 min_similarity=0.6
             )
@@ -195,57 +201,39 @@ class RevisionTask(BaseWriterTask):
             threshold=0.5
         )
         
+        # Build formatted context text
+        context_parts = [formatted_hierarchical]
+        
+        # Add semantic context
+        if semantic_context:
+            similar_parts = []
+            for similar in semantic_context[:3]:  # Top 3 similar
+                similar_parts.append(f"- {similar['hierarchical_id']}: {similar['title']} (podobieństwo: {similar['similarity']:.2f})")
+            context_parts.append(f"PODOBNE FRAGMENTY:\n" + "\n".join(similar_parts))
+        
+        # Add contextual chunks
+        if contextual_chunks:
+            contextual_parts = []
+            for ctx in contextual_chunks[:3]:  # Top 3 contextual
+                contextual_parts.append(f"- {ctx['hierarchical_id']}: {ctx['title']}")
+            context_parts.append(f"KONTEKST TEMATYCZNY:\n" + "\n".join(contextual_parts))
+        
+        formatted_context = "\n\n".join(context_parts)
+        
         return {
-            'basic_context': basic_context,
-            'semantic_context': semantic_context,
-            'contextual_chunks': contextual_chunks,
-            'toc_summary': toc_summary,
+            'formatted_context': formatted_context,
             'target_chunk': target_chunk
         }
     
     def _revise_chunk(self, llm_client: LLMClient, chunk: ChunkData, revision_context: dict) -> str:
         """Revise chunk content using comprehensive context"""
-        # Build context from all sources
-        context_text = self._build_revision_context_text(revision_context)
-        
         # Create revision prompt
-        prompt = self._create_revision_prompt(chunk, context_text)
+        prompt = self._create_revision_prompt(chunk, revision_context['formatted_context'])
         
-        print(f"🔧 Revising chunk {chunk.hierarchical_id} with semantic context")
+        print(f"🔧 Revising chunk {chunk.hierarchical_id} with hierarchical context")
         return llm_client.chat(prompt)
-    
-    def _build_revision_context_text(self, revision_context: dict) -> str:
-        """Build comprehensive context text for revision"""
-        context_parts = []
-        
-        # TOC summary
-        context_parts.append(f"SCENARIUSZ CAŁOŚCI:\n{revision_context['toc_summary']}")
-        
-        # Basic context (previous/next)
-        basic = revision_context['basic_context']
-        if basic.get('previous_chunk') and basic['previous_chunk'].summary:
-            context_parts.append(f"POPRZEDNI FRAGMENT ({basic['previous_chunk'].hierarchical_id}):\n{basic['previous_chunk'].summary}")
-        
-        if basic.get('next_chunk') and basic['next_chunk'].summary:
-            context_parts.append(f"NASTĘPNY FRAGMENT ({basic['next_chunk'].hierarchical_id}):\n{basic['next_chunk'].summary}")
-        
-        # Semantic context
-        if revision_context['semantic_context']:
-            similar_parts = []
-            for similar in revision_context['semantic_context'][:3]:  # Top 3 similar
-                similar_parts.append(f"- {similar['hierarchical_id']}: {similar['title']} (podobieństwo: {similar['similarity']:.2f})")
-            context_parts.append(f"PODOBNE FRAGMENTY:\n" + "\n".join(similar_parts))
-        
-        # Contextual chunks
-        if revision_context['contextual_chunks']:
-            contextual_parts = []
-            for ctx in revision_context['contextual_chunks'][:3]:  # Top 3 contextual
-                contextual_parts.append(f"- {ctx['hierarchical_id']}: {ctx['title']}")
-            context_parts.append(f"KONTEKST TEMATYCZNY:\n" + "\n".join(contextual_parts))
-        
-        return "\n\n".join(context_parts)
-    
-    def _create_revision_prompt(self, chunk: ChunkData, context: str) -> str:
+
+    def _create_revision_prompt(self, chunk: ChunkData, formatted_context: str) -> str:
         """Create revision prompt with comprehensive context"""
         prompt_config = self.task_config['prompt']
         
@@ -258,7 +246,7 @@ class RevisionTask(BaseWriterTask):
         user_prompt = prompt_config['user'].format(
             hierarchical_id=chunk.hierarchical_id,
             title=chunk.title,
-            context=context,
+            context=formatted_context,
             original_content=chunk.content
         )
         

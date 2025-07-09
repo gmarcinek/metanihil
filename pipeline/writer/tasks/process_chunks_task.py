@@ -5,7 +5,7 @@ from pipeline.writer.tasks.base_writer_task import BaseWriterTask
 from writer.writer_service import WriterService
 from writer.models import ChunkStatus, ChunkData
 from pipeline.writer.config_loader import ConfigLoader
-from llm import LLMClient, LLMConfig
+from llm import LLMClient
 
 
 class ProcessChunksTask(BaseWriterTask):
@@ -32,20 +32,13 @@ class ProcessChunksTask(BaseWriterTask):
         return luigi.LocalTarget(f"{self.output_dir}/completed.flag")
     
     def run(self):
-        # Ensure output directory exists
         Path(self.output_dir).mkdir(parents=True, exist_ok=True)
-        
-        # Persist task start
         self._persist_task_progress("GLOBAL", f"ProcessChunksTask_Iteration_{self.iteration}", "STARTED")
         
         try:
-            # Initialize WriterService
             writer_service = WriterService(storage_dir="output/writer_storage")
-            
-            # Initialize LLM client
             llm_client = LLMClient(model=self.task_config['model'])
             
-            # Get batch of chunks to process
             chunks_to_process = writer_service.get_chunks_batch(ChunkStatus.NOT_STARTED, self.batch_size)
             
             if not chunks_to_process:
@@ -55,41 +48,20 @@ class ProcessChunksTask(BaseWriterTask):
                 self._persist_task_progress("GLOBAL", f"ProcessChunksTask_Iteration_{self.iteration}", "COMPLETED")
                 return
             
-            # Load TOC summary for context
-            toc_summary = self._load_toc_summary()
-            
-            # Process each chunk in batch
             processed_count = 0
             for chunk in chunks_to_process:
                 self._persist_task_progress(chunk.hierarchical_id, f"ProcessChunksTask_Iteration_{self.iteration}", "IN_PROGRESS")
                 
                 try:
-                    # Get processing context for this chunk
-                    context = writer_service.get_processing_context(chunk)
-                    
-                    if 'error' in context:
-                        raise ValueError(context['error'])
-                    
-                    # Add all chunks to context for new format
-                    context['all_chunks'] = list(writer_service.chunks.values())
-                    
-                    # Generate content for chunk
-                    content = self._generate_chunk_content(llm_client, chunk, context, toc_summary)
-                    
-                    # Generate summary of the content
+                    # Generate content using hierarchical context
+                    content = self._generate_chunk_content(llm_client, writer_service, chunk)
                     summary = self._generate_chunk_summary(llm_client, chunk, content)
                     
-                    # Update chunk with content and summary
-                    success = writer_service.update_chunk_content(
-                        chunk_id=chunk.id,
-                        content=content,
-                        summary=summary
-                    )
+                    # Update chunk
+                    success = writer_service.update_chunk_content(chunk_id=chunk.id, content=content, summary=summary)
                     
                     if success:
-                        # Save individual chunk output
                         self._save_chunk_output(chunk, content, summary)
-                        
                         processed_count += 1
                         self._persist_task_progress(chunk.hierarchical_id, f"ProcessChunksTask_Iteration_{self.iteration}", "COMPLETED")
                         print(f"✅ Processed chunk {chunk.hierarchical_id}: {chunk.title}")
@@ -97,7 +69,6 @@ class ProcessChunksTask(BaseWriterTask):
                         raise ValueError("Failed to update chunk in WriterService")
                     
                 except Exception as e:
-                    # Mark chunk as failed
                     chunk.status = ChunkStatus.FAILED
                     writer_service.persistence.save_chunk(chunk)
                     writer_service.chunks[chunk.id] = chunk
@@ -105,54 +76,37 @@ class ProcessChunksTask(BaseWriterTask):
                     self._persist_task_progress(chunk.hierarchical_id, f"ProcessChunksTask_Iteration_{self.iteration}", "FAILED")
                     print(f"❌ Failed to process chunk {chunk.hierarchical_id}: {str(e)}")
             
-            # Create completion flag
             with open(self.output().path, 'w', encoding='utf-8') as f:
                 f.write(f"Processed {processed_count}/{len(chunks_to_process)} chunks in iteration {self.iteration}")
             
-            # Persist task completion
             self._persist_task_progress("GLOBAL", f"ProcessChunksTask_Iteration_{self.iteration}", "COMPLETED")
-            
             print(f"✅ Completed iteration {self.iteration}: {processed_count}/{len(chunks_to_process)} chunks processed")
             
         except Exception as e:
             self._persist_task_progress("GLOBAL", f"ProcessChunksTask_Iteration_{self.iteration}", "FAILED")
             raise
     
-    def _load_toc_summary(self) -> str:
-        """Load TOC summary from previous task"""
-        toc_short_path = f"{self.config.get_output_config()['base_dir']}/{self.toc_name}/{self.config.get_output_config()['toc_short_filename']}"
+    def _generate_chunk_content(self, llm_client: LLMClient, writer_service: WriterService, chunk: ChunkData) -> str:
+        """Generate content for chunk using hierarchical context"""
+        # Get hierarchical context
+        hierarchical_context = writer_service.get_hierarchical_context(chunk)
+        if 'error' in hierarchical_context:
+            raise ValueError(hierarchical_context['error'])
         
-        try:
-            with open(toc_short_path, 'r', encoding='utf-8') as f:
-                return f.read()
-        except FileNotFoundError:
-            print(f"⚠️ TOC summary not found at {toc_short_path}")
-            return "TOC summary not available"
-    
-    def _generate_chunk_content(self, llm_client: LLMClient, chunk: ChunkData, context: dict, toc_summary: str) -> str:
-        """Generate content for chunk using LLM"""
+        # Format context for LLM
+        formatted_context = writer_service.format_hierarchical_context_for_llm(hierarchical_context)
+        
+        # Build prompt
         prompt_config = self.task_config['content_prompt']
         
-        # Format context for prompt - now returns dict
-        context_data = self._format_context_for_prompt(context, toc_summary)
-        
-        # Format system prompt with author and title
-        system_prompt = prompt_config['system'].format(
-            author=self.author,
-            title=self.title
-        )
-        
-        # Create user prompt with all required variables
+        system_prompt = prompt_config['system'].format(author=self.author, title=self.title)
         user_prompt = prompt_config['user'].format(
             hierarchical_id=chunk.hierarchical_id,
             chunk_title=chunk.title,
-            toc_summary=toc_summary,
-            previous_content=context_data['previous_content'],
-            upcoming_summaries=context_data['upcoming_summaries']
+            hierarchical_context=formatted_context
         )
         
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
-        
         return llm_client.chat(full_prompt)
     
     def _generate_chunk_summary(self, llm_client: LLMClient, chunk: ChunkData, content: str) -> str:
@@ -166,42 +120,7 @@ class ProcessChunksTask(BaseWriterTask):
         )
         
         full_prompt = f"{prompt_config['system']}\n\n{user_prompt}"
-        
         return llm_client.chat(full_prompt)
-    
-    def _format_context_for_prompt(self, context: dict, toc_summary: str) -> dict:
-        """Format context information for LLM prompt - returns dict for interpolation"""
-        
-        # Get 5 previous chunks (full content)
-        previous_chunks = context.get('previous_5_chunks', [])
-        
-        previous_content_parts = []
-        for chunk in previous_chunks:
-            if chunk.content:
-                previous_content_parts.append(f"{chunk.hierarchical_id} {chunk.title}\n{chunk.content}")
-            elif chunk.summary:
-                previous_content_parts.append(f"{chunk.hierarchical_id} {chunk.title}\n{chunk.summary}")
-            else:
-                previous_content_parts.append(f"{chunk.hierarchical_id} {chunk.title}\n[Treść w przygotowaniu]")
-        
-        previous_content = "\n\n---\n\n".join(previous_content_parts) if previous_content_parts else "Brak poprzednich rozdziałów."
-        
-        # Get 5 upcoming chunks (summaries only)
-        upcoming_chunks = context.get('next_5_chunks', [])
-        
-        upcoming_parts = []
-        for chunk in upcoming_chunks:
-            if chunk.summary:
-                upcoming_parts.append(f"{chunk.hierarchical_id} {chunk.title}: {chunk.summary}")
-            else:
-                upcoming_parts.append(f"{chunk.hierarchical_id} {chunk.title}: [Streszczenie w przygotowaniu]")
-        
-        upcoming_summaries = "\n".join(upcoming_parts) if upcoming_parts else "Brak nadchodzących rozdziałów."
-        
-        return {
-            'previous_content': previous_content,
-            'upcoming_summaries': upcoming_summaries
-        }
     
     def _save_chunk_output(self, chunk: ChunkData, content: str, summary: str):
         """Save individual chunk output to file"""
