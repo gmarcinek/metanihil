@@ -49,23 +49,28 @@ tasks:
         • Styl: {author}, polski, ok. 50 % bardziej przystępny od klasycznego traktatu.
         • Unikaj słów: autor, czytelnik, podsumowując, w tym rozdziale, analizuję, recenzja, streszczenie.
       user: |
-        Napisz kolejny punkt manifestu. {numer_toc} {tytul_toc}
+        Napisz kolejny rozdział: {hierarchical_id} {chunk_title}
 
-        KONTEKST (nie cytuj, nie parafrazuj jawnie):
-        {context}
+        STRESZCZENIE CAŁOŚCI:
+        {toc_summary}
+
+        POPRZEDNIE ROZDZIAŁY (5 ostatnich):
+        {previous_content}
+
+        NADCHODZĄCE ROZDZIAŁY (streszczenia):
+        {upcoming_summaries}
 
         Instrukcje:
-        1. Dodaj jednowierszowy **nagłówek**.
-        2. Napisz treść rozdziału
-          • Korzystaj z sekcji **PAST** (wątków) dla zachowania ciągłosci myśli, ale nie cytuj ich, nie parafrazuj ich.  
-          • Treści oznaczonych **AHEAD** używaj wyłącznie do zachowania ciągłości - nie ujawniaj ich ani nie streszczaj.  
-          • Nawiąż do `PREVIOUS_PARAGRAPH`, nie powtarzając go literalnie.  
-          • Zero odniesień meta-tekstowych; maksymalnie jedno pytanie retoryczne.
-          • Zero wprowadzania w temat; piszesz od środka, czytelnik jest już wprowadzony w temat.
+        1. Napisz pełny rozdział dla {hierarchical_id} {chunk_title}
+        2. Zachowaj ciągłość z poprzednimi rozdziałami
+        3. Przygotuj grunt pod nadchodzące tematy
+        4. Zero odniesień meta-tekstowych
+        5. Piszesz od środka - czytelnik zna kontekst
 
         FORMAT WYJŚCIA (nic ponadto):
-        {hierarchical_id} <Nagłówek>
-        <Akapit treści>
+        {hierarchical_id} {chunk_title}
+        
+        <Treść rozdziału>
 
     summary_prompt:
       system: "Jesteś ekspertem od streszczania różnorodnych tekstów."

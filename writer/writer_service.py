@@ -304,13 +304,19 @@ class WriterService:
         previous_summaries = [c.summary for c in all_chunks[start_prev:chunk_index] if c.summary]
         next_titles = [f"{c.hierarchical_id}: {c.title}" for c in all_chunks[chunk_index + 1:end_next]]
         
+        # Get 5 previous and 5 next chunks for context
+        previous_5_chunks = all_chunks[start_prev:chunk_index]
+        next_5_chunks = all_chunks[chunk_index + 1:end_next]
+        
         return {
             'chunk': chunk,
             'previous_chunk': previous_chunk,
             'next_chunk': next_chunk,
             'previous_summaries': previous_summaries,
             'next_titles': next_titles,
-            'position': f"{chunk_index + 1}/{len(all_chunks)}"
+            'position': f"{chunk_index + 1}/{len(all_chunks)}",
+            'previous_5_chunks': previous_5_chunks,  # ← 5 poprzednich
+            'next_5_chunks': next_5_chunks          # ← 5 następnych
         }
     
     # ==================== STATISTICS & MANAGEMENT ====================

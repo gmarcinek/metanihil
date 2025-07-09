@@ -5,7 +5,7 @@ from pipeline.writer.tasks.base_writer_task import BaseWriterTask
 from writer.writer_service import WriterService
 from writer.models import ChunkStatus, ChunkData
 from pipeline.writer.config_loader import ConfigLoader
-from llm import LLMClient
+from llm import LLMClient, LLMConfig
 
 
 class ProcessChunksTask(BaseWriterTask):
@@ -70,6 +70,9 @@ class ProcessChunksTask(BaseWriterTask):
                     if 'error' in context:
                         raise ValueError(context['error'])
                     
+                    # Add all chunks to context for new format
+                    context['all_chunks'] = list(writer_service.chunks.values())
+                    
                     # Generate content for chunk
                     content = self._generate_chunk_content(llm_client, chunk, context, toc_summary)
                     
@@ -130,8 +133,8 @@ class ProcessChunksTask(BaseWriterTask):
         """Generate content for chunk using LLM"""
         prompt_config = self.task_config['content_prompt']
         
-        # Format context for prompt
-        context_text = self._format_context_for_prompt(context, toc_summary)
+        # Format context for prompt - now returns dict
+        context_data = self._format_context_for_prompt(context, toc_summary)
         
         # Format system prompt with author and title
         system_prompt = prompt_config['system'].format(
@@ -139,10 +142,13 @@ class ProcessChunksTask(BaseWriterTask):
             title=self.title
         )
         
-        # Create user prompt
+        # Create user prompt with all required variables
         user_prompt = prompt_config['user'].format(
             hierarchical_id=chunk.hierarchical_id,
-            context=context_text
+            chunk_title=chunk.title,
+            toc_summary=toc_summary,
+            previous_content=context_data['previous_content'],
+            upcoming_summaries=context_data['upcoming_summaries']
         )
         
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
@@ -163,41 +169,39 @@ class ProcessChunksTask(BaseWriterTask):
         
         return llm_client.chat(full_prompt)
     
-    def _format_context_for_prompt(self, context: dict, toc_summary: str) -> str:
-        """Format context information for LLM prompt in PAST/AHEAD/PREVIOUS_PARAGRAPH format"""
-        parts = []
+    def _format_context_for_prompt(self, context: dict, toc_summary: str) -> dict:
+        """Format context information for LLM prompt - returns dict for interpolation"""
         
-        # PAST section - previous summaries for content inspiration
-        if context.get('previous_summaries'):
-            past_summaries = context['previous_summaries']
-            parts.append("PAST:")
-            for summary in past_summaries:
-                if summary and summary.strip():
-                    parts.append(f"- {summary.strip()}")
-            parts.append("")  # Empty line after section
+        # Get 5 previous chunks (full content)
+        previous_chunks = context.get('previous_5_chunks', [])
         
-        # AHEAD section - upcoming titles/summaries for continuity
-        if context.get('next_titles'):
-            next_titles = context['next_titles']
-            parts.append("AHEAD:")
-            for title in next_titles:
-                if title and title.strip():
-                    parts.append(f"- {title.strip()}")
-            parts.append("")  # Empty line after section
+        previous_content_parts = []
+        for chunk in previous_chunks:
+            if chunk.content:
+                previous_content_parts.append(f"{chunk.hierarchical_id} {chunk.title}\n{chunk.content}")
+            elif chunk.summary:
+                previous_content_parts.append(f"{chunk.hierarchical_id} {chunk.title}\n{chunk.summary}")
+            else:
+                previous_content_parts.append(f"{chunk.hierarchical_id} {chunk.title}\n[Treść w przygotowaniu]")
         
-        # PREVIOUS_PARAGRAPH section - direct predecessor content
-        if context.get('previous_chunk') and context['previous_chunk'].content:
-            parts.append("PREVIOUS_PARAGRAPH:")
-            parts.append(context['previous_chunk'].content.strip())
-            parts.append("")  # Empty line after section
+        previous_content = "\n\n---\n\n".join(previous_content_parts) if previous_content_parts else "Brak poprzednich rozdziałów."
         
-        # Add TOC summary if no other context available
-        if not parts and toc_summary:
-            parts.append("SCENARIUSZ CAŁOŚCI:")
-            parts.append(toc_summary)
-            parts.append("")
+        # Get 5 upcoming chunks (summaries only)
+        upcoming_chunks = context.get('next_5_chunks', [])
         
-        return '\n'.join(parts).strip()
+        upcoming_parts = []
+        for chunk in upcoming_chunks:
+            if chunk.summary:
+                upcoming_parts.append(f"{chunk.hierarchical_id} {chunk.title}: {chunk.summary}")
+            else:
+                upcoming_parts.append(f"{chunk.hierarchical_id} {chunk.title}: [Streszczenie w przygotowaniu]")
+        
+        upcoming_summaries = "\n".join(upcoming_parts) if upcoming_parts else "Brak nadchodzących rozdziałów."
+        
+        return {
+            'previous_content': previous_content,
+            'upcoming_summaries': upcoming_summaries
+        }
     
     def _save_chunk_output(self, chunk: ChunkData, content: str, summary: str):
         """Save individual chunk output to file"""
